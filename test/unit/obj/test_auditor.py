@@ -101,6 +101,7 @@ class TestAuditor(unittest.TestCase):
                 'ETag': etag,
                 'X-Timestamp': timestamp,
                 'Content-Length': str(os.fstat(fd).st_size),
+                'Original-Content-Length': str(os.fstat(fd).st_size)
             }
             self.disk_file.put(fd, metadata)
             pre_quarantines = self.auditor.quarantines
@@ -239,6 +240,7 @@ class TestAuditor(unittest.TestCase):
                 'ETag': etag,
                 'X-Timestamp': str(normalize_timestamp(time.time())),
                 'Content-Length': str(os.fstat(fd).st_size),
+                'Original-Content-Length': str(os.fstat(fd).st_size)
             }
             self.disk_file.put(fd, metadata)
             etag = md5()

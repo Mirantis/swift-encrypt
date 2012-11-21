@@ -110,6 +110,7 @@ setup(
             'filter_factory',
             'slo=swift.common.middleware.slo:filter_factory',
             'list_endpoints=swift.common.middleware.list_endpoints:'
+            'key_manager = swift.common.middleware.encryption.key_manager:'
             'filter_factory',
         ],
     },

@@ -47,6 +47,7 @@ from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPCreated, \
     HTTPPreconditionFailed, HTTPRequestTimeout, HTTPUnprocessableEntity, \
     HTTPClientDisconnect, HTTPMethodNotAllowed, Request, Response, UTC, \
     HTTPInsufficientStorage, multi_range_iterator
+from swift.obj.encryptor import M2CryptoDriver, FakeDriver
 
 
 DATADIR = 'objects'
@@ -55,7 +56,8 @@ PICKLE_PROTOCOL = 2
 METADATA_KEY = 'user.swift.metadata'
 MAX_OBJECT_NAME_LENGTH = 1024
 # keep these lower-case
-DISALLOWED_HEADERS = set('content-length content-type deleted etag'.split())
+DISALLOWED_HEADERS = set('content-length content-type deleted etag \
+        original-content-length original-etag'.split())
 
 
 def read_metadata(fd):
@@ -109,7 +111,7 @@ class DiskFile(object):
 
     def __init__(self, path, device, partition, account, container, obj,
                  logger, keep_data_fp=False, disk_chunk_size=65536,
-                 iter_hook=None):
+                 iter_hook=None, crypto_driver=None):
         self.disk_chunk_size = disk_chunk_size
         self.iter_hook = iter_hook
         self.name = '/' + '/'.join((account, container, obj))
@@ -129,6 +131,7 @@ class DiskFile(object):
         self.read_to_eof = False
         self.quarantined_dir = None
         self.keep_cache = False
+        self.crypto_driver = crypto_driver
         self.suppress_file_closing = False
         if not os.path.exists(self.datadir):
             return
@@ -155,6 +158,9 @@ class DiskFile(object):
                     if key.lower() not in DISALLOWED_HEADERS:
                         del self.metadata[key]
                 self.metadata.update(read_metadata(mfp))
+        _key_id = self.metadata.get("x-object-meta-key_id")
+        if (_key_id and self.crypto_driver):
+            self.crypto_driver.get_key_value(_key_id)
 
     def __iter__(self):
         """Returns an iterator over the data file."""
@@ -176,6 +182,8 @@ class DiskFile(object):
                         self.drop_cache(self.fp.fileno(), dropped_cache,
                                         read - dropped_cache)
                         dropped_cache = read
+                    if self.crypto_driver:
+                        chunk = self.crypto_driver.decrypt(chunk)
                     yield chunk
                     if self.iter_hook:
                         self.iter_hook()
@@ -363,9 +371,10 @@ class DiskFile(object):
 
     def get_data_file_size(self):
         """
-        Returns the os.path.getsize for the file.  Raises an exception if this
-        file does not match the Content-Length stored in the metadata. Or if
-        self.data_file does not exist.
+        Returns the Original-Content-Length stored in metadata,
+        whi is length of not crypted file. Also check
+        if os.path.getsize does not match the Content-Length stored
+        in the metadata. Or il self.data_file does not exist.
 
         :returns: file size as an int
         :raises DiskFileError: on file size mismatch.
@@ -381,7 +390,12 @@ class DiskFile(object):
                         raise DiskFileError(
                             'Content-Length of %s does not match file size '
                             'of %s' % (metadata_size, file_size))
-                return file_size
+                original_file_size = \
+                        int(self.metadata['Original-Content-Length'])
+                if original_file_size:
+                    return original_file_size
+                else:
+                    return file_size
         except OSError, err:
             if err.errno != errno.ENOENT:
                 raise
@@ -398,13 +412,15 @@ class ObjectController(object):
         <source-dir>/etc/object-server.conf-sample or
         /etc/swift/object-server.conf-sample.
         """
+        self.crypto_driver = self._get_crypto_driver(conf)
         self.logger = get_logger(conf, log_route='object-server')
         self.devices = conf.get('devices', '/srv/node/')
         self.mount_check = config_true_value(conf.get('mount_check', 'true'))
         self.node_timeout = int(conf.get('node_timeout', 3))
         self.conn_timeout = float(conf.get('conn_timeout', 0.5))
-        self.disk_chunk_size = int(conf.get('disk_chunk_size', 65536))
         self.network_chunk_size = int(conf.get('network_chunk_size', 65536))
+        self.disk_chunk_size = \
+                self.crypto_driver.crypted_len(self.network_chunk_size)
         self.keep_cache_size = int(conf.get('keep_cache_size', 5242880))
         self.keep_cache_private = \
             config_true_value(conf.get('keep_cache_private', 'false'))
@@ -428,6 +444,22 @@ class ObjectController(object):
             'expiring_objects'
         self.expiring_objects_container_divisor = \
             int(conf.get('expiring_objects_container_divisor') or 86400)
+
+    def _get_crypto_driver(self, conf):
+        """
+        Create one of realisation of crypto driver interface
+        selected based on "encrypt_driver"
+        line in configuration
+        :param conf: configuration
+        :return: realisation of crypto driver
+        """
+        encryption_driver = conf.get("crypto_driver")
+        if encryption_driver == "M2Crypto":
+            return M2CryptoDriver(conf)
+        if encryption_driver == "fake":
+            return FakeDriver(conf)
+        raise NotImplementedError("Incorrect 'crypto_driver' parameter \
+                in configuration for object-server")
 
     def async_update(self, op, account, container, obj, host, partition,
                      contdevice, headers_out, objdevice):
@@ -567,6 +599,7 @@ class ObjectController(object):
     @timing_stats()
     def POST(self, request):
         """Handle HTTP POST requests for the Swift Object Server."""
+        start_time = time.time()
         try:
             device, partition, account, container, obj = \
                 split_path(unquote(request.path), 5, 5, True)
@@ -585,7 +618,8 @@ class ObjectController(object):
         if self.mount_check and not check_mount(self.devices, device):
             return HTTPInsufficientStorage(drive=device, request=request)
         file = DiskFile(self.devices, device, partition, account, container,
-                        obj, self.logger, disk_chunk_size=self.disk_chunk_size)
+                        obj, self.logger, disk_chunk_size=self.disk_chunk_size,
+                        crypto_driver=self.crypto_driver)
 
         if file.is_deleted() or file.is_expired():
             return HTTPNotFound(request=request)
@@ -616,6 +650,10 @@ class ObjectController(object):
     @timing_stats()
     def PUT(self, request):
         """Handle HTTP PUT requests for the Swift Object Server."""
+        start_time = time.time()
+        _key_str = request.headers.get("x-object-meta-key_id")
+        if _key_str and self.crypto_driver:
+            self.crypto_driver.get_key_value(_key_str)
         try:
             device, partition, account, container, obj = \
                 split_path(unquote(request.path), 5, 5, True)
@@ -637,10 +675,12 @@ class ObjectController(object):
             return HTTPBadRequest(body='X-Delete-At in past', request=request,
                                   content_type='text/plain')
         file = DiskFile(self.devices, device, partition, account, container,
-                        obj, self.logger, disk_chunk_size=self.disk_chunk_size)
+                        obj, self.logger, disk_chunk_size=self.disk_chunk_size,
+                        crypto_driver=self.crypto_driver)
         orig_timestamp = file.metadata.get('X-Timestamp')
         upload_expiration = time.time() + self.max_upload_time
         etag = md5()
+        etag_orig = md5()
         upload_size = 0
         last_sync = 0
         elasped_time = 0
@@ -652,7 +692,10 @@ class ObjectController(object):
             reader = request.environ['wsgi.input'].read
             for chunk in iter(lambda: reader(self.network_chunk_size), ''):
                 start_time = time.time()
+                etag_orig.update(chunk)
                 upload_size += len(chunk)
+                if self.crypto_driver:
+                    chunk = self.crypto_driver.crypt(chunk)
                 if time.time() > upload_expiration:
                     self.logger.increment('PUT.timeouts')
                     return HTTPRequestTimeout(request=request)
@@ -676,14 +719,17 @@ class ObjectController(object):
                     int(request.headers['content-length']) != upload_size:
                 return HTTPClientDisconnect(request=request)
             etag = etag.hexdigest()
-            if 'etag' in request.headers and \
-                    request.headers['etag'].lower() != etag:
+            etag_orig = etag_orig.hexdigest()
+            if ('etag' in request.headers and \
+                request.headers['etag'].lower() != etag_orig):
                 return HTTPUnprocessableEntity(request=request)
             metadata = {
                 'X-Timestamp': request.headers['x-timestamp'],
                 'Content-Type': request.headers['content-type'],
                 'ETag': etag,
-                'Content-Length': str(upload_size),
+                'Original-Etag': etag_orig,
+                'Content-Length': str(os.fstat(fd).st_size),
+                'Original-Content-Length': str(upload_size)
             }
             metadata.update(val for val in request.headers.iteritems()
                             if val[0].lower().startswith('x-object-meta-') and
@@ -706,15 +752,18 @@ class ObjectController(object):
         file.unlinkold(metadata['X-Timestamp'])
         if not orig_timestamp or \
                 orig_timestamp < request.headers['x-timestamp']:
+            #FIXME(vvechkanov): maybe Original-Content-Length
+            #                   should be used here
             self.container_update(
                 'PUT', account, container, obj, request.headers,
                 {'x-size': file.metadata['Content-Length'],
                  'x-content-type': file.metadata['Content-Type'],
                  'x-timestamp': file.metadata['X-Timestamp'],
-                 'x-etag': file.metadata['ETag'],
+                 'x-etag': file.metadata['Original-Etag'],
                  'x-trans-id': request.headers.get('x-trans-id', '-')},
                 device)
-        resp = HTTPCreated(request=request, etag=etag)
+        resp = HTTPCreated(request=request, etag=etag_orig)
+        self.logger.timing_since('PUT.timing', start_time)
         return resp
 
     @public
@@ -732,8 +781,8 @@ class ObjectController(object):
             return HTTPInsufficientStorage(drive=device, request=request)
         file = DiskFile(self.devices, device, partition, account, container,
                         obj, self.logger, keep_data_fp=True,
-                        disk_chunk_size=self.disk_chunk_size,
-                        iter_hook=sleep)
+                        disk_chunk_size=self.disk_chunk_size, iter_hook=sleep,
+                        crypto_driver=self.crypto_driver)
         if file.is_deleted() or file.is_expired():
             if request.headers.get('if-match') == '*':
                 return HTTPPreconditionFailed(request=request)
@@ -745,13 +794,13 @@ class ObjectController(object):
             file.quarantine()
             return HTTPNotFound(request=request)
         if request.headers.get('if-match') not in (None, '*') and \
-                file.metadata['ETag'] not in request.if_match:
+                file.metadata['Original-Etag'] not in request.if_match:
             file.close()
             return HTTPPreconditionFailed(request=request)
         if request.headers.get('if-none-match') is not None:
-            if file.metadata['ETag'] in request.if_none_match:
+            if file.metadata['Original-Etag'] in request.if_none_match:
                 resp = HTTPNotModified(request=request)
-                resp.etag = file.metadata['ETag']
+                resp.etag = file.metadata['Original-Etag']
                 file.close()
                 return resp
         try:
@@ -784,7 +833,7 @@ class ObjectController(object):
             if key.lower().startswith('x-object-meta-') or \
                     key.lower() in self.allowed_headers:
                 response.headers[key] = value
-        response.etag = file.metadata['ETag']
+        response.etag = file.metadata['Original-Etag']
         response.last_modified = float(file.metadata['X-Timestamp'])
         response.content_length = file_size
         if response.content_length < self.keep_cache_size and \
@@ -813,7 +862,8 @@ class ObjectController(object):
         if self.mount_check and not check_mount(self.devices, device):
             return HTTPInsufficientStorage(drive=device, request=request)
         file = DiskFile(self.devices, device, partition, account, container,
-                        obj, self.logger, disk_chunk_size=self.disk_chunk_size)
+                        obj, self.logger, disk_chunk_size=self.disk_chunk_size,
+                        crypto_driver=self.crypto_driver)
         if file.is_deleted() or file.is_expired():
             return HTTPNotFound(request=request)
         try:
@@ -828,7 +878,7 @@ class ObjectController(object):
             if key.lower().startswith('x-object-meta-') or \
                     key.lower() in self.allowed_headers:
                 response.headers[key] = value
-        response.etag = file.metadata['ETag']
+        response.etag = file.metadata['Original-Etag']
         response.last_modified = float(file.metadata['X-Timestamp'])
         # Needed for container sync feature
         response.headers['X-Timestamp'] = file.metadata['X-Timestamp']
@@ -856,7 +906,8 @@ class ObjectController(object):
             return HTTPInsufficientStorage(drive=device, request=request)
         response_class = HTTPNoContent
         file = DiskFile(self.devices, device, partition, account, container,
-                        obj, self.logger, disk_chunk_size=self.disk_chunk_size)
+                        obj, self.logger, disk_chunk_size=self.disk_chunk_size,
+                        crypto_driver=self.crypto_driver)
         if 'x-if-delete-at' in request.headers and \
                 int(request.headers['x-if-delete-at']) != \
                 int(file.metadata.get('X-Delete-At') or 0):

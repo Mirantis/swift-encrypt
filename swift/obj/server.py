@@ -47,7 +47,7 @@ from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPCreated, \
     HTTPPreconditionFailed, HTTPRequestTimeout, HTTPUnprocessableEntity, \
     HTTPClientDisconnect, HTTPMethodNotAllowed, Request, Response, UTC, \
     HTTPInsufficientStorage, multi_range_iterator
-from swift.obj.encryptor import M2CryptoDriver, FakeDriver
+from swift.obj import encryptor
 
 
 DATADIR = 'objects'
@@ -412,8 +412,8 @@ class ObjectController(object):
         <source-dir>/etc/object-server.conf-sample or
         /etc/swift/object-server.conf-sample.
         """
-        self.crypto_driver = self._get_crypto_driver(conf)
         self.logger = get_logger(conf, log_route='object-server')
+        self.crypto_driver = self._get_crypto_driver(conf)
         self.devices = conf.get('devices', '/srv/node/')
         self.mount_check = config_true_value(conf.get('mount_check', 'true'))
         self.node_timeout = int(conf.get('node_timeout', 3))
@@ -447,19 +447,15 @@ class ObjectController(object):
 
     def _get_crypto_driver(self, conf):
         """
-        Create one of realisation of crypto driver interface
-        selected based on "encrypt_driver"
-        line in configuration
-        :param conf: configuration
-        :return: realisation of crypto driver
+        Create instance of encryption driver, initialize and return it.
+        This function lookup driver path into configuration option
+        'crypto_driver'.
+
+        :param conf: application configuration
+        :returns: instance of subclass of
+                  swift.obj.encryptor.CryptoDriver
         """
-        encryption_driver = conf.get("crypto_driver")
-        if encryption_driver == "M2Crypto":
-            return M2CryptoDriver(conf)
-        if encryption_driver == "fake":
-            return FakeDriver(conf)
-        raise NotImplementedError("Incorrect 'crypto_driver' parameter \
-                in configuration for object-server")
+        return encryptor.get_driver(conf, conf.get('crypto_driver'))
 
     def async_update(self, op, account, container, obj, host, partition,
                      contdevice, headers_out, objdevice):

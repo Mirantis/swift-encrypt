@@ -16,7 +16,7 @@
 """
 Implementation of key_manager for encryption objects.
 
-This filter needed for cooperation with DataBase and supporting
+This filter needed for cooperation with key store and supporting
 following functions:
     getting key_id associated with account name or
     generating new key_id, if it not existed;
@@ -25,8 +25,7 @@ following functions:
 
 from swift.common.swob import Request
 from swift.common.utils import split_path
-from swift.common.middleware.encryption.drivers import sql
-from swift.common.middleware.encryption.drivers import fake_driver
+from swift.common import key_manager
 
 
 class KeyManager(object):
@@ -42,9 +41,8 @@ class KeyManager(object):
 
         self.app = app
         self.conf = conf
-        crypto_keystore_driver = conf.get('crypto_keystore_driver')
-        self.url = conf.get('crypto_keystore_sql_url')
-        self.key_driver = self.get_interface(crypto_keystore_driver)
+        self.key_driver = key_manager.get_driver(conf,
+                                            conf.get('crypto_keystore_driver'))
 
     def get_account(self, path):
         """
@@ -57,24 +55,6 @@ class KeyManager(object):
         """
         version, account, container, obj = split_path(path, 1, 4, True)
         return account
-
-    def get_interface(self, driver):
-        """
-        Get KeyDrivers's child class for such driver type.
-
-        :param driver: string - type of database key
-        :return class X(KeyDriver): KeyDriver's child class
-
-        :raise NotImplementedError: throw if such interface don't exist
-        """
-
-        if driver == "fake":
-            return fake_driver.FakeDriver()
-
-        if driver == "sql":
-            return sql.SQLDriver(self.url)
-
-        raise NotImplementedError("Not implemented driver")
 
     def get_key_id(self, account):
         """
@@ -100,13 +80,10 @@ class KeyManager(object):
         req = Request(env)
 
         if req.method == "PUT":
-            # get account
             account = self.get_account(req.path)
-            # get associated key_id
-            key_id_val = self.get_key_id(account)
-            # add new field in "headres"
-            req.headers.update({'x-object-meta-key_id': key_id_val})
-            # update environment variables
+            key_id = self.get_key_id(account)
+            req.headers.update({'x-object-meta-key_id': key_id})
+            # update environment
             env = req.environ
         return self.app(env, start_response)
 

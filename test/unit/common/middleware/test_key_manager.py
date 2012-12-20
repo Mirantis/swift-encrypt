@@ -14,9 +14,10 @@
 # limitations under the License.
 
 import unittest
+import mock
 
-from swift.common.middleware.encryption import key_manager
-from swift.common.middleware.encryption.drivers import fake_driver
+from swift.common.middleware import key_manager
+from swift.common.key_manager.drivers.fake import FakeDriver
 
 
 class FakeApp(object):
@@ -36,19 +37,27 @@ def start_response(*args):
 
 class TestKeyManager(unittest.TestCase):
     def setUp(self):
-        fake = 'fake'
-        self.conf = {
-            'crypto_keystore_driver': fake,
-            'crypto_keystore_sql_url': fake,
-        }
+        """
+        Set up for testing swift.common.middleware.key_manager.KeyManager.
+        """
+        self.conf = {}
+        self.patcher = mock.patch('swift.common.key_manager.get_driver')
+        self.mock_get_driver = self.patcher.start()
+        self.mock_get_driver.return_value = FakeDriver(self.conf)
+
+    def tearDown(self):
+        """
+        Tear down for testing swift.common.middleware.key_manager.KeyManager.
+        """
+        self.patcher.stop()
 
     def test_filter(self):
         """
         Testing filter_factory
         """
         factory = key_manager.filter_factory(self.conf)
-        self.assert_(callable(factory))
-        self.assert_(callable(factory(FakeApp())))
+        self.assertTrue(callable(factory))
+        self.assertTrue(callable(factory(FakeApp())))
 
     def test_functions_with_fake_driver(self):
         """
@@ -57,16 +66,9 @@ class TestKeyManager(unittest.TestCase):
         app = key_manager.KeyManager(FakeApp, self.conf)
         account_path = '/Version/MyName/Container/Object'
 
-        # Object for Fake driver is correct
-        self.assertEquals(type(app.key_driver), fake_driver.FakeDriver)
-        # have raise for any unknown driver.
-        self.assertRaises(NotImplementedError, app.get_interface,
-                          'unknown_driver')
         # Fake driver return "12345"
         self.assertEquals(app.get_key_id("anybody"), 12345)
-        # account is correct
         self.assertEquals(app.get_account(account_path), "MyName")
-        # Raise, if path with account is not correct
         self.assertRaises(ValueError, app.get_account, account_path[1:])
 
         # check filter for different types of request

@@ -388,7 +388,9 @@ class TestObjectController(unittest.TestCase):
             os.path.join(mkdtemp(), 'tmp_test_object_server_ObjectController')
         mkdirs(os.path.join(self.testdir, 'sda1', 'tmp'))
         conf = {'devices': self.testdir, 'mount_check': 'false',
-                "crypto_driver": "fake", "crypto_keystore_driver": "fake"}
+                "crypto_driver": "swift.obj.encryptor.FakeDriver",
+                "crypto_keystore_driver": "swift.common.key_manager.drivers."
+                                          "fake.FakeDriver"}
         self.object_controller = object_server.ObjectController(conf)
         self.object_controller.bytes_per_sync = 1
 

@@ -1166,6 +1166,12 @@ log_name = %(yarr)s'''
         finally:
             utils._sys_fallocate = orig__sys_fallocate
 
+    def test_import_class_builtin(self):
+        self.assertEqual(utils.import_class('__builtin__.object'), object)
+
+    def test_import_class_error(self):
+        self.assertRaises(ImportError, utils.import_class, 'some.not.found')
+
 
 class TestStatsdLogging(unittest.TestCase):
     def test_get_logger_statsd_client_not_specified(self):

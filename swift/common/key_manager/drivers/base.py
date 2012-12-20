@@ -25,6 +25,9 @@ This class include methods for cooperation with DataBase:
 class KeyDriver(object):
     """Parent class for differetn key manager interfaces"""
 
+    def __init__(self, conf):
+        self.conf = conf
+
     def get_key(self, key_id):
         """
         Empty method get_key

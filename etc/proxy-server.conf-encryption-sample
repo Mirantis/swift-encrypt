@@ -334,7 +334,7 @@ use = egg:swift#proxy_logging
 [filter:key-manager]
 use = egg:swift#key_manager
 # Crypto_driver-driver for working with key storage.
-# crypto_keystore_driver = sql
+# crypto_keystore_driver = swift.common.key_manager.drivers.sql.SQLDriver
 # Url address, login, password for access to DataBase
 # crypto_keystore_sql_url = mysql://root:12345@localhost/swift_encryption_store_key_account_database
 

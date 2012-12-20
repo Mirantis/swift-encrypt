@@ -1,12 +1,39 @@
+# Copyright (c) 2010-2012 OpenStack, LLC.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""
+Encryption drivers for object storage server.
+"""
+
 from M2Crypto.EVP import Cipher
 
-from swift.common.middleware.encryption.drivers.fake_driver \
-        import FakeDriver as FakeKeystoreDriver
-from swift.common.middleware.encryption.drivers.sql import SQLDriver
-"""
-Library which realise cryptography functional.
-It takes key value and encrypt objects
-"""
+from swift.common.utils import import_class
+from swift.common import key_manager
+
+
+def get_driver(conf, driver):
+    """
+    Function to get and initialize encryption driver.
+
+    :param conf: application configuration dictionary
+    :param driver: import path to CryptoDriver subclass
+
+    :returns: instance of subclass of
+              swift.common.obj.encryptor.CryptoDriver
+    """
+    driver_class = import_class(driver)
+    return driver_class(conf)
 
 
 class CryptoDriver(object):
@@ -18,23 +45,10 @@ class CryptoDriver(object):
     key_value = ""
 
     def __init__(self, conf):
+        self.conf = conf
         self.protocol = conf.get("crypto_protocol")
-        self.keystore_driver = self._get_keystore_driver(conf)
-
-    def _get_keystore_driver(self, conf):
-        """
-        Returns the correct implementation of the keystore driver
-        based on the configuration file.
-
-        :param conf: object-server configuration file
-        :returns: implementation of the keystore driver
-        """
-        driver = conf.get('crypto_keystore_driver')
-        if driver == "sql":
-            url = conf.get("crypto_keystore_sql_url")
-            return SQLDriver(url)
-        if driver == "fake":
-            return FakeKeystoreDriver()
+        self.keystore_driver = key_manager.get_driver(conf,
+                                   conf.get('crypto_keystore_driver'))
 
     def crypted_len(self, original_len):
         """

@@ -21,12 +21,12 @@ This library include methods for managing encryption key, such as:
     store information about of key_id, key, account in sql DataBase.
 """
 
-import random
-from base64 import b64decode, b64encode
+import base64
 import os
 
-from sqlalchemy import create_engine, MetaData, Table, Column, String, \
-     Integer, exc
+from sqlalchemy import create_engine, exc
+from sqlalchemy.schema import MetaData, Table, Column
+from sqlalchemy.types import String, Integer
 
 from .base import KeyDriver
 
@@ -41,18 +41,29 @@ key_info_table = Table("key_info", meta,
 
 class SQLDriver(KeyDriver):
     """
-    Driver for cooperation proxy and object servers with keys storage
+    Driver for cooperation proxy and object servers with keys storage.
     """
-    connection_attempts = 5
+    default_connection_attempts = 5
+    default_connection_url = 'sqlite:///keystore.sqlite'
 
-    def __init__(self, url):
+    def __init__(self, conf, initialize_table=True):
         """
         Initialization function.
-        :param url: url address for connecting to sql DataBase
 
+        :param conf: application configuration
+        :param initialize_table: create table into database at
+                                 instance initialization
         """
-        self.engine = meta.bind = create_engine(url)
-        self.create_table()
+        super(SQLDriver, self).__init__(conf)
+        self.connection_attempts = conf.get(
+                'crypto_keystore_sql_connection_attempts',
+                self.default_connection_attempts)
+        self.connection_url = conf.get('crypto_keystore_sql_url',
+                                       self.default_connection_url)
+        self.engine = meta.bind = create_engine(self.connection_url)
+
+        if initialize_table:
+            self.create_table()
 
     def create_table(self):
         """
@@ -122,7 +133,7 @@ class SQLDriver(KeyDriver):
             # For openssl standart key consist of 16 hex chars
             key = os.urandom(16)
             # change format for store key in database
-            enc_key = b64encode(key)
+            enc_key = base64.b64encode(key)
             # check connection to database
             self.reconnect_to_db()
             # select key_id column
@@ -133,7 +144,7 @@ class SQLDriver(KeyDriver):
             update_method.execute(encryption_key=enc_key)
             return key
 
-        key = b64decode(re[0][2])
+        key = base64.b64decode(re[0][2])
         return key
 
     def find_value(self, col_name, val):

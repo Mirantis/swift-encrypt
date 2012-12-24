@@ -48,6 +48,7 @@ from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPCreated, \
     HTTPPreconditionFailed, HTTPRequestTimeout, HTTPUnprocessableEntity, \
     HTTPClientDisconnect, HTTPMethodNotAllowed, Request, Response, UTC, \
     HTTPInsufficientStorage, multi_range_iterator
+from swift.common.key_manager.drivers.base import KeyDriver
 from swift.obj.encryptor import CryptoDriver
 
 
@@ -112,7 +113,7 @@ class DiskFile(object):
 
     def __init__(self, path, device, partition, account, container, obj,
                  logger, keep_data_fp=False, disk_chunk_size=65536,
-                 iter_hook=None, crypto_driver=None):
+                 iter_hook=None, encryption_context=None, crypto_driver=None):
         self.disk_chunk_size = disk_chunk_size
         self.iter_hook = iter_hook
         self.name = '/' + '/'.join((account, container, obj))
@@ -132,8 +133,9 @@ class DiskFile(object):
         self.read_to_eof = False
         self.quarantined_dir = None
         self.keep_cache = False
-        self.crypto_driver = crypto_driver
         self.suppress_file_closing = False
+        self.encryption_context = encryption_context
+        self.crypto_driver = crypto_driver
         if not os.path.exists(self.datadir):
             return
         files = sorted(os.listdir(self.datadir), reverse=True)
@@ -159,9 +161,10 @@ class DiskFile(object):
                     if key.lower() not in DISALLOWED_HEADERS:
                         del self.metadata[key]
                 self.metadata.update(read_metadata(mfp))
-        _key_id = self.metadata.get("x-object-meta-key_id")
-        if (_key_id and self.crypto_driver):
-            self.crypto_driver.get_key_value(_key_id)
+        if self.crypto_driver and not self.encryption_context:
+            key_id = self.metadata.get('X-Object-Meta-Key-Id')
+            self.encryption_context = \
+                self.crypto_driver.encryption_context(key_id)
 
     def __iter__(self):
         """Returns an iterator over the data file."""
@@ -184,7 +187,8 @@ class DiskFile(object):
                                         read - dropped_cache)
                         dropped_cache = read
                     if self.crypto_driver:
-                        chunk = self.crypto_driver.decrypt(chunk)
+                        chunk = self.crypto_driver.decrypt(
+                                    self.encryption_context, chunk)
                     yield chunk
                     if self.iter_hook:
                         self.iter_hook()
@@ -414,14 +418,25 @@ class ObjectController(object):
         /etc/swift/object-server.conf-sample.
         """
         self.logger = get_logger(conf, log_route='object-server')
-        self.crypto_driver = self._get_crypto_driver(conf)
+        key_manager = conf.get('crypto_keystore_driver',
+                               'swift.common.key_manager.drivers.dummy.'
+                               'DummyDriver')
+        self.key_manager = create_instance(key_manager, KeyDriver, conf)
+        crypto_driver = conf.get('crypto_driver',
+                                 'swift.obj.encryptor.DummyDriver')
+        self.crypto_driver = create_instance(crypto_driver, CryptoDriver, conf,
+                                             self.key_manager)
         self.devices = conf.get('devices', '/srv/node/')
         self.mount_check = config_true_value(conf.get('mount_check', 'true'))
         self.node_timeout = int(conf.get('node_timeout', 3))
         self.conn_timeout = float(conf.get('conn_timeout', 0.5))
         self.network_chunk_size = int(conf.get('network_chunk_size', 65536))
+        disk_chunk_size = int(conf.get('disk_chunk_size', 65536))
+        key_id = self.key_manager.get_key_id('default')
+        encryption_context = self.crypto_driver.encryption_context(key_id)
         self.disk_chunk_size = \
-                self.crypto_driver.crypted_len(self.network_chunk_size)
+            self.crypto_driver.encrypted_chunk_size(encryption_context,
+                                                    disk_chunk_size)
         self.keep_cache_size = int(conf.get('keep_cache_size', 5242880))
         self.keep_cache_private = \
             config_true_value(conf.get('keep_cache_private', 'false'))
@@ -445,20 +460,6 @@ class ObjectController(object):
             'expiring_objects'
         self.expiring_objects_container_divisor = \
             int(conf.get('expiring_objects_container_divisor') or 86400)
-
-    def _get_crypto_driver(self, conf):
-        """
-        Create instance of encryption driver, initialize and return it.
-        This function lookup driver path into configuration option
-        'crypto_driver'.
-
-        :param conf: application configuration
-        :returns: instance of subclass of
-                  swift.obj.encryptor.CryptoDriver
-        """
-        crypto_driver = conf.get('crypto_driver',
-                                 'swift.obj.encryptor.FakeDriver')
-        return create_instance(crypto_driver, CryptoDriver, conf)
 
     def async_update(self, op, account, container, obj, host, partition,
                      contdevice, headers_out, objdevice):
@@ -650,9 +651,8 @@ class ObjectController(object):
     def PUT(self, request):
         """Handle HTTP PUT requests for the Swift Object Server."""
         start_time = time.time()
-        _key_str = request.headers.get("x-object-meta-key_id")
-        if _key_str and self.crypto_driver:
-            self.crypto_driver.get_key_value(_key_str)
+        key_id = request.headers.get('x-object-meta-key-id')
+        encryption_context = self.crypto_driver.encryption_context(key_id)
         try:
             device, partition, account, container, obj = \
                 split_path(unquote(request.path), 5, 5, True)
@@ -675,6 +675,7 @@ class ObjectController(object):
                                   content_type='text/plain')
         file = DiskFile(self.devices, device, partition, account, container,
                         obj, self.logger, disk_chunk_size=self.disk_chunk_size,
+                        encryption_context=encryption_context,
                         crypto_driver=self.crypto_driver)
         orig_timestamp = file.metadata.get('X-Timestamp')
         upload_expiration = time.time() + self.max_upload_time
@@ -693,8 +694,7 @@ class ObjectController(object):
                 start_time = time.time()
                 etag_orig.update(chunk)
                 upload_size += len(chunk)
-                if self.crypto_driver:
-                    chunk = self.crypto_driver.crypt(chunk)
+                chunk = self.crypto_driver.encrypt(encryption_context, chunk)
                 if time.time() > upload_expiration:
                     self.logger.increment('PUT.timeouts')
                     return HTTPRequestTimeout(request=request)

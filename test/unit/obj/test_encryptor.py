@@ -14,27 +14,19 @@
 # limitations under the License.
 
 import unittest
-import mock
 import os
 
-from swift.obj.encryptor import M2CryptoDriver, FakeDriver
+from swift.common.key_manager.drivers.fake import FakeDriver
+from swift.obj.encryptor import M2CryptoDriver, DummyDriver
 
 
 class TestEncryptor(unittest.TestCase):
     def setUp(self):
         """
         Set up for testing swift.obj.encryptor.M2CryptoDriver and
-        swift.obj.encryptor.FakeDriver encryption drivers.
+        swift.obj.encryptor.DummyDriver encryption drivers.
         """
-        self.patcher = mock.patch('swift.obj.encryptor.create_instance')
-        self.mock_create_instance = self.patcher.start()
-
-    def tearDown(self):
-        """
-        Tear down for testing swift.obj.encryptor.M2CryptoDriver and
-        swift.obj.encryptor.FakeDriver encryption drivers.
-        """
-        self.patcher.stop()
+        self.key_manager = FakeDriver({})
 
     def _driver_testing(self, crypto_driver):
         """
@@ -43,18 +35,19 @@ class TestEncryptor(unittest.TestCase):
 
         :param crypto_driver: crypto driver for testing
         """
+        context = crypto_driver.encryption_context('fake')
         text = os.urandom(20000)
-        crypted_text = crypto_driver.crypt(text)
-        self.assertEquals(text, crypto_driver.decrypt(crypted_text))
+        crypted_text = crypto_driver.encrypt(context, text)
+        self.assertEquals(text, crypto_driver.decrypt(context, crypted_text))
 
     def test_M2CryptoDriver_aes_128_cbc(self):
         """Test for M2Crypto driver whith aes_128_cbc algorithm"""
         conf = {"crypto_protocol": "aes_128_cbc"}
-        crypto_driver = M2CryptoDriver(conf)
+        crypto_driver = M2CryptoDriver(conf, self.key_manager)
         self._driver_testing(crypto_driver)
 
-    def test_FakeDriver(self):
+    def test_DummyDriver(self):
         """Test for fake driver"""
         conf = {}
-        crypto_driver = FakeDriver(conf)
+        crypto_driver = DummyDriver(conf, self.key_manager)
         self._driver_testing(crypto_driver)

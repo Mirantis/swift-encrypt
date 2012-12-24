@@ -388,7 +388,7 @@ class TestObjectController(unittest.TestCase):
             os.path.join(mkdtemp(), 'tmp_test_object_server_ObjectController')
         mkdirs(os.path.join(self.testdir, 'sda1', 'tmp'))
         conf = {'devices': self.testdir, 'mount_check': 'false',
-                "crypto_driver": "swift.obj.encryptor.FakeDriver",
+                "crypto_driver": "swift.obj.encryptor.DummyDriver",
                 "crypto_keystore_driver": "swift.common.key_manager.drivers."
                                           "fake.FakeDriver"}
         self.object_controller = object_server.ObjectController(conf)

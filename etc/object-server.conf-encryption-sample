@@ -58,8 +58,10 @@ use = egg:swift#object
 # auto_create_account_prefix = .
 
 # Encryption's configurations:
+## DummyDriver doesn't do encryption (this driver is default)
+# crypto_driver = swift.obj.encryptor.DummyDriver
 ## To use module M2Crypto for encryption specify driver:
-# crypto_driver = swift.obj.encryptor.M2Crypto
+# crypto_driver = swift.obj.encryptor.M2CryptoDriver
 ## M2Crypto driver support parameterized protocol(aes_128_cbc by default):
 # crypto_protocol = aes_128_cbc
 

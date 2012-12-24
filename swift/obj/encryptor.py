@@ -16,89 +16,103 @@
 Encryption drivers for object storage server.
 """
 
-from M2Crypto.EVP import Cipher
-
-from swift.common.utils import create_instance
-from swift.common.key_manager.drivers.base import KeyDriver
+import M2Crypto
 
 
 class CryptoDriver(object):
     """
-    Crypt, decrypt and get key using key_id. Decision what crypto driver
-    to use are taken here. Drivers for different realisation should implements
-    this class and implements functions crypt and decrypt.
+    Base driver class that implements the functionality of encryption
+    and decryption of data blocks of objects.
+
+    :param conf: application configuration
+    :param key_manager: instance of
+                        swift.common.key_manager.base.KeyDriver which
+                        store encryption keys
     """
-    key_value = ""
 
-    def __init__(self, conf):
+    def __init__(self, conf, key_manager):
         self.conf = conf
-        self.protocol = conf.get("crypto_protocol")
-        keystore_driver = conf.get('crypto_keystore_driver',
-                                   'swift.common.key_manager.drivers.fake.'
-                                   'FakeDriver')
-        self.keystore_driver = create_instance(keystore_driver, KeyDriver,
-                                               conf)
+        self.key_manager = key_manager
 
-    def crypted_len(self, original_len):
+    def encrypted_chunk_size(self, context, original_size):
         """
-        Count length of crypted string, base on length original
-        string. Should be called only for classes, which implement
-        this class and realise crypto algorithm.
+        Calculates the size of the encrypted data block based on the
+        size of the original data block.
 
-        :param original_len: length of original string
+        :param cotext: encryption context
+        :param original_size: length of original string
         :returns: length of crypted string
         """
-        res = "a" * original_len
-        return len(str(self.crypt(res)))
+        chunk = " " * original_size
+        return len(str(self.encrypt(context, chunk)))
 
-    def crypt(self, chunk_string):
+    def encrypt(self, context, chunk):
         """
-        :param chunk_string: string for encryption
-        :returns: encrypted string
+        Returns the encrypted data block.
+
+        :param context: encryption context
+        :param chunk: data block to encrypt
+        :returns: encrypted data block
         """
         raise NotImplementedError
 
-    def decrypt(self, chunck_string):
+    def decrypt(self, context, chunk):
         """
-        :param chunk_string: string for decryption
-        :returns: decrypted string
+        Returns the decrypted data block.
+
+        :param context: encryption context
+        :param chunk: data block to decrypt
+        :returns: decrypted data block
         """
         raise NotImplementedError
 
-    def get_key_value(self, key_id):
+    def encryption_context(self, key_id):
         """
-        Get key value from KeyController
-        :param key_id: Id of key
-        :returns key_value: directly key for this id.
+        Returns the context which needed to encrypt or decrypt the
+        data block.
+
+        :param key_id: unique key identifier
+        :returns: encryption context
         """
-        self.key_value = self.keystore_driver.get_key(key_id)
+        context = {'key_id': key_id}
+        return context
 
 
-class FakeDriver(CryptoDriver):
+class DummyDriver(CryptoDriver):
     """
-    Fake implementation of CryptoDriver, which does nothing. While
+    Dummy implementation of CryptoDriver, which does nothing. While
     encryption/decryption it just return original string.
     """
-    def __init__(self, conf):
-        CryptoDriver.__init__(self, conf)
 
-    def crypt(self, chunk_string):
+    def encrypted_chunk_size(self, context, original_size):
         """
-        Make fake encryption. Just return original string.
+        Return original chunk size.
 
-        :param chunk_string: original string for encryption
-        :returns: original string
+        :param cotext: encryption context
+        :param original_size: length of original string
+        :returns: length of crypted string
         """
-        return chunk_string
+        return original_size
 
-    def decrypt(self, chunk_string):
+    def encrypt(self, context, chunk):
         """
-        Make fake decryption. Just return original string.
+        Make dummy encryption. Just return original string.
 
-        :param chunk_string: original string for decryption
-        :returns: original string
+        :param context: encryption context
+        :param chunk: data block to decrypt
+        :returns: original data block
         """
-        return chunk_string
+        return chunk
+
+    def decrypt(self, context, chunk):
+        """
+        Make dummy decryption. Just return original string.
+
+        :param context: encryption context
+        :param chunk: data block to decrypt
+        :returns: original data block
+        """
+        return chunk
 
 
 class M2CryptoDriver(CryptoDriver):
@@ -108,54 +122,71 @@ class M2CryptoDriver(CryptoDriver):
     because we use unified keys for all algorithm. So only key
     value is used for crypting. Also using hardcoded value provides
     better secure than not using it at all.
+
+    :param conf: application configuration
+    :param key_manager: instance of
+                        swift.common.key_manager.base.KeyDriver which
+                        store encryption keys
     """
-    def __init__(self, conf):
-        CryptoDriver.__init__(self, conf)
-        self.iv = "3141527182810345"
-        self.protocol = conf.get("crypto_protocol", "aes_128_cbc")
-        if self.protocol != "aes_128_cbc":
-            raise NotImplementedError("Incorrect protocol")
+    default_protocol = 'aes_128_cbc'
+    default_iv = '3141527182810345'
 
-    def crypt(self, chunk):
-        """
-        Encrypt string whith protocol from crypto_protocol config field.
-        Use hardcoded initial vector and key extracted from keystore.
+    def __init__(self, conf, key_manager):
+        CryptoDriver.__init__(self, conf, key_manager)
+        self.protocol = conf.get('crypto_protocol', self.default_protocol)
+        #TODO(ikharin): Now supported only aes_128_cbc protocol.
+        if self.protocol != self.default_protocol:
+            raise ValueError("M2CryptoDriver support only %r not %r "
+                             "protocol." %
+                             (self.default_protocol, self.protocol))
 
-        :param chunk: string for encryption
-        :returns: encrypted string
-        :raises ValueError: if crypto protocol is not supported
-                            by M2Crypto library
+    def encrypt(self, context, chunk):
         """
-        try:
-            cipher = Cipher(alg=self.protocol,
-                    key=self.key_value, iv=self.iv, op=1)
-            v = cipher.update(chunk)
-            v = v + cipher.final()
-            del cipher
-            return v
-        except ValueError, error:
-            if error[0] == 'unknown cipher':
-                raise ValueError('%r:%r please select avaliable protocol \
-                        type' % (error[0], error[1]))
+        Encrypt data block using protocol from crypto_protocol config
+        field. Key and initial vector extracted from encryption context.
 
-    def decrypt(self, chunk):
+        :param context: encryption context
+        :param chunk: data block to encrypt
+        :returns: encrypted data block
         """
-        Decrypt string whith protocol from crypto_protocol config field.
-        Use hardcoded initial vector and key extracted from keystore.
+        cipher = M2Crypto.EVP.Cipher(alg=self.protocol,
+                                     key=context['key'],
+                                     iv=context['iv'],
+                                     op=1)
+        v = cipher.update(chunk)
+        v = v + cipher.final()
+        return v
 
-        :param chunk: string for decryption
-        :returns: decrypted string
-        :raises ValueError: if crypto protocol is not supported
-                            by M2Crypto library
+    def decrypt(self, context, chunk):
         """
-        try:
-            cipher = Cipher(alg=self.protocol,
-                    key=self.key_value, iv=self.iv, op=0)
-            v = cipher.update(chunk)
-            v = v + cipher.final()
-            del cipher
-            return v
-        except ValueError, error:
-            if error[0] == 'unknown cipher':
-                raise ValueError('%r:%r please select avaliable protocol \
-                        type' % (error[0], error[1]))
+        Decrypt data block using protocol from crypto_protocol config
+        field. Key and initial vector extracted from encryption context.
+
+        :param context: encryption context
+        :param chunk: data block to decrypt
+        :returns: decrypted data block
+        """
+        cipher = M2Crypto.EVP.Cipher(alg=self.protocol,
+                                     key=context['key'],
+                                     iv=context['iv'],
+                                     op=0)
+        v = cipher.update(chunk)
+        v = v + cipher.final()
+        return v
+
+    def encryption_context(self, key_id):
+        """
+        Returns the context which needed to encrypt or decrypt the
+        data block.
+
+        :param key_id: unique key ID
+        :returns: encryption context
+        """
+        context = super(M2CryptoDriver, self).encryption_context(key_id)
+        #TODO(ikharin): IV hardcoded now it will be generated and stored
+        #               into key manager.
+        context.update({
+            'key': self.key_manager.get_key(key_id),
+            'iv': self.default_iv,
+        })
+        return context

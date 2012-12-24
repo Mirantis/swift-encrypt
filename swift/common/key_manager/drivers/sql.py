@@ -116,14 +116,15 @@ class SQLDriver(KeyDriver):
         :raise ValueError: if string include not only digits chars
         :raise StandardError: if DB don't have row with current key_id
         """
-        if type(key_id) is not long:
+        if not isinstance(key_id, long):
             try:
                 key_id = long(key_id)
             except TypeError:
-                raise TypeError("Incorrect type. Must be string or int.")
+                raise TypeError("Incorrect type of value %r. Must be string or"
+                                " int." % (key_id,))
             except ValueError:
-                raise ValueError("Incorrect value. String must include "
-                                 "only digits chars.")
+                raise ValueError("Incorrect value %r. String must include "
+                                 "only digits chars." % (key_id,))
 
         re = self.find_value("key_id", str(key_id))
         if not re:

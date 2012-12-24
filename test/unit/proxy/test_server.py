@@ -104,7 +104,7 @@ def setup():
             'mount_check': 'false', 'allowed_headers':
             'content-encoding, x-object-manifest, content-disposition, foo',
             'allow_versions': 'True',
-            'crypto_driver': 'swift.obj.encryptor.FakeDriver'}
+            'crypto_driver': 'swift.obj.encryptor.DummyDriver'}
     prolis = listen(('localhost', 0))
     acc1lis = listen(('localhost', 0))
     acc2lis = listen(('localhost', 0))

@@ -80,12 +80,10 @@ class KeyManager(object):
         :return self.app: standart next WSGI app in the pipeline
         """
         req = Request(env)
-
         if req.method == "PUT":
             account = self.get_account(req.path)
             key_id = self.get_key_id(account)
-            req.headers.update({'x-object-meta-key_id': key_id})
-            # update environment
+            req.headers['X-Object-Meta-Key-Id'] = key_id
             env = req.environ
         return self.app(env, start_response)
 

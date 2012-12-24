@@ -24,8 +24,8 @@ following functions:
 """
 
 from swift.common.swob import Request
-from swift.common.utils import split_path
-from swift.common import key_manager
+from swift.common.utils import split_path, create_instance
+from swift.common.key_manager.drivers.base import KeyDriver
 
 
 class KeyManager(object):
@@ -41,8 +41,10 @@ class KeyManager(object):
 
         self.app = app
         self.conf = conf
-        self.key_driver = key_manager.get_driver(conf,
-                                            conf.get('crypto_keystore_driver'))
+        key_manager = conf.get('crypto_keystore_driver',
+                               'swift.common.key_manager.drivers.dummy.'
+                               'DummyDriver')
+        self.key_manager = create_instance(key_manager, KeyDriver, conf)
 
     def get_account(self, path):
         """
@@ -64,7 +66,7 @@ class KeyManager(object):
         :param account: user account name
         :returns key_id: key_id is associated by account
         """
-        return self.key_driver.get_key_id(account)
+        return self.key_manager.get_key_id(account)
 
     def __call__(self, env, start_response):
         """

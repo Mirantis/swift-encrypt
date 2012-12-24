@@ -18,22 +18,8 @@ Encryption drivers for object storage server.
 
 from M2Crypto.EVP import Cipher
 
-from swift.common.utils import import_class
-from swift.common import key_manager
-
-
-def get_driver(conf, driver):
-    """
-    Function to get and initialize encryption driver.
-
-    :param conf: application configuration dictionary
-    :param driver: import path to CryptoDriver subclass
-
-    :returns: instance of subclass of
-              swift.common.obj.encryptor.CryptoDriver
-    """
-    driver_class = import_class(driver)
-    return driver_class(conf)
+from swift.common.utils import create_instance
+from swift.common.key_manager.drivers.base import KeyDriver
 
 
 class CryptoDriver(object):
@@ -47,8 +33,11 @@ class CryptoDriver(object):
     def __init__(self, conf):
         self.conf = conf
         self.protocol = conf.get("crypto_protocol")
-        self.keystore_driver = key_manager.get_driver(conf,
-                                   conf.get('crypto_keystore_driver'))
+        keystore_driver = conf.get('crypto_keystore_driver',
+                                   'swift.common.key_manager.drivers.fake.'
+                                   'FakeDriver')
+        self.keystore_driver = create_instance(keystore_driver, KeyDriver,
+                                               conf)
 
     def crypted_len(self, original_len):
         """

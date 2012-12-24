@@ -41,9 +41,10 @@ class TestKeyManager(unittest.TestCase):
         Set up for testing swift.common.middleware.key_manager.KeyManager.
         """
         self.conf = {}
-        self.patcher = mock.patch('swift.common.key_manager.get_driver')
-        self.mock_get_driver = self.patcher.start()
-        self.mock_get_driver.return_value = FakeDriver(self.conf)
+        self.patcher = mock.patch('swift.common.middleware.key_manager.'
+                                  'create_instance')
+        self.mock_create_instance = self.patcher.start()
+        self.mock_create_instance.return_value = FakeDriver(self.conf)
 
     def tearDown(self):
         """

@@ -15,19 +15,3 @@
 """
 Management of keys for objects encryption.
 """
-
-from swift.common.utils import import_class
-
-
-def get_driver(conf, driver):
-    """
-    Function to get and initialize driver to store keys.
-
-    :param conf: application configuration dictionary
-    :param driver: import path to KeyDriver subclass
-
-    :returns: instance of subclass of
-              swift.common.key_manager.base.KeyDriver
-    """
-    driver_class = import_class(driver)
-    return driver_class(conf)

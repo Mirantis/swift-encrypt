@@ -33,7 +33,8 @@ from eventlet import sleep, Timeout, tpool
 from swift.common.utils import mkdirs, normalize_timestamp, public, \
     storage_directory, hash_path, renamer, fallocate, fsync, fdatasync, \
     split_path, drop_buffer_cache, get_logger, write_pickle, \
-    config_true_value, validate_device_partition, timing_stats
+    config_true_value, validate_device_partition, timing_stats, \
+    create_instance
 from swift.common.bufferedhttp import http_connect
 from swift.common.constraints import check_object_creation, check_mount, \
     check_float, check_utf8
@@ -47,7 +48,7 @@ from swift.common.swob import HTTPAccepted, HTTPBadRequest, HTTPCreated, \
     HTTPPreconditionFailed, HTTPRequestTimeout, HTTPUnprocessableEntity, \
     HTTPClientDisconnect, HTTPMethodNotAllowed, Request, Response, UTC, \
     HTTPInsufficientStorage, multi_range_iterator
-from swift.obj import encryptor
+from swift.obj.encryptor import CryptoDriver
 
 
 DATADIR = 'objects'
@@ -455,7 +456,9 @@ class ObjectController(object):
         :returns: instance of subclass of
                   swift.obj.encryptor.CryptoDriver
         """
-        return encryptor.get_driver(conf, conf.get('crypto_driver'))
+        crypto_driver = conf.get('crypto_driver',
+                                 'swift.obj.encryptor.FakeDriver')
+        return create_instance(crypto_driver, CryptoDriver, conf)
 
     def async_update(self, op, account, container, obj, host, partition,
                      contdevice, headers_out, objdevice):

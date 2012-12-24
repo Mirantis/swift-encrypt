@@ -28,6 +28,7 @@ import socket
 import sys
 import time
 import unittest
+import mock
 from threading import Thread
 from Queue import Queue, Empty
 from getpass import getuser
@@ -1171,6 +1172,18 @@ log_name = %(yarr)s'''
 
     def test_import_class_error(self):
         self.assertRaises(ImportError, utils.import_class, 'some.not.found')
+
+    @mock.patch('swift.common.utils.import_class')
+    def test_create_instance(self, mock_import_class):
+        mock_import_class.return_value = object
+        utils.create_instance('__builtin__.object', object)
+        mock_import_class.assert_called_once_with('__builtin__.object')
+
+    @mock.patch('swift.common.utils.import_class')
+    def test_create_instance_error(self, mock_import_class):
+        mock_import_class.return_value = object
+        self.assertRaises(ValueError, utils.create_instance,
+                          '__builtin__.object', type)
 
 
 class TestStatsdLogging(unittest.TestCase):

@@ -26,8 +26,8 @@ class TestEncryptor(unittest.TestCase):
         Set up for testing swift.obj.encryptor.M2CryptoDriver and
         swift.obj.encryptor.FakeDriver encryption drivers.
         """
-        self.patcher = mock.patch('swift.common.key_manager.get_driver')
-        self.mock_keystore_driver = self.patcher.start()
+        self.patcher = mock.patch('swift.obj.encryptor.create_instance')
+        self.mock_create_instance = self.patcher.start()
 
     def tearDown(self):
         """

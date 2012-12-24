@@ -333,8 +333,15 @@ use = egg:swift#proxy_logging
 # Note: Just needs to be placed after auth filter(s) and before proxy-logging in the pipeline.
 [filter:key-manager]
 use = egg:swift#key_manager
-# Crypto_driver-driver for working with key storage.
+# Key management for encryption configuration:
+## DummyDriver which don't store keys and generate their as md5sum of account
+## name (by default):
+# crypto_keystore_driver = swift.common.key_manager.drivers.dummy.DummyDriver
+## To enable FakeDriver which use only one hardcoded key, uncomment next line:
+# crypto_keystore_driver = swift.common.key_manager.drivers.fake.FakeDriver
+## To ebale SQLDriver which generate keys and store it into SQL database,
+## uncomment next line:
 # crypto_keystore_driver = swift.common.key_manager.drivers.sql.SQLDriver
-# Url address, login, password for access to DataBase
+## SQLDriver support connection URI for SQLAlchemy, it's required if used
+## SQLDriver:
 # crypto_keystore_sql_url = mysql://root:12345@localhost/swift_encryption_store_key_account_database
-

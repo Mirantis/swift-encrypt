@@ -56,15 +56,24 @@ use = egg:swift#object
 # Content-Type, etag, Content-Length, or deleted
 # allowed_headers = Content-Disposition, Content-Encoding, X-Delete-At, X-Object-Manifest
 # auto_create_account_prefix = .
-    
+
 # Encryption's configurations:
-## Crypt_poptocol sets encryption algorithm.
+## To use module M2Crypto for encryption specify driver:
+# crypto_driver = swift.obj.encryptor.M2Crypto
+## M2Crypto driver support parameterized protocol(aes_128_cbc by default):
 # crypto_protocol = aes_128_cbc
-## Crypto_driver-driver for working with key storage.
+
+# Key management for encryption configuration:
+## DummyDriver which don't store keys and generate their as md5sum of account
+## name (by default):
+# crypto_keystore_driver = swift.common.key_manager.drivers.dummy.DummyDriver
+## To enable FakeDriver which use only one hardcoded key, uncomment next line:
+# crypto_keystore_driver = swift.common.key_manager.drivers.fake.FakeDriver
+## To ebale SQLDriver which generate keys and store it into SQL database,
+## uncomment next line:
 # crypto_keystore_driver = swift.common.key_manager.drivers.sql.SQLDriver
-## Encrypt_driver sets library(driver), that will be used for encryption.
-# crypto_driver = swift.obj.encryptor.M2CryptoDriver
-## Url address, login, password for access to DataBase
+## SQLDriver support connection URI for SQLAlchemy, it's required if used
+## SQLDriver:
 # crypto_keystore_sql_url = mysql://root:12345@localhost/swift_encryption_store_key_account_database
 
 [filter:recon]

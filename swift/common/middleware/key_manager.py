@@ -46,18 +46,6 @@ class KeyManager(object):
                                'DummyDriver')
         self.key_manager = create_instance(key_manager, KeyDriver, conf)
 
-    def get_account(self, path):
-        """
-        Get the account to handle a request.
-
-        :param path: path from request
-        :returns: account
-
-        :raises: ValueError (thrown by split_path) if given invalid path
-        """
-        version, account, container, obj = split_path(path, 1, 4, True)
-        return account
-
     def get_key_id(self, account):
         """
         Get key_id associated by account name.
@@ -80,11 +68,12 @@ class KeyManager(object):
         :return self.app: standart next WSGI app in the pipeline
         """
         req = Request(env)
-        if req.method == "PUT":
-            account = self.get_account(req.path)
-            key_id = self.get_key_id(account)
-            req.headers['X-Object-Meta-Key-Id'] = key_id
-            env = req.environ
+        if req.method == 'PUT':
+            _, account, container, obj = split_path(req.path, 1, 4, True)
+            if account and container and obj:
+                key_id = self.get_key_id(account)
+                req.headers['X-Object-Meta-Key-Id'] = key_id
+                env = req.environ
         return self.app(env, start_response)
 
 

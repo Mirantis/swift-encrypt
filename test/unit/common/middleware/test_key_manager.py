@@ -41,10 +41,14 @@ class TestKeyManager(unittest.TestCase):
         Set up for testing swift.common.middleware.key_manager.KeyManager.
         """
         self.conf = {}
+        self.account_path = '/version/account'
+        self.container_path = '/version/account/container'
+        self.object_path = '/version/account/container/object'
         self.patcher = mock.patch('swift.common.middleware.key_manager.'
                                   'create_instance')
         self.mock_create_instance = self.patcher.start()
         self.mock_create_instance.return_value = FakeDriver(self.conf)
+        self.app = key_manager.KeyManager(FakeApp, self.conf)
 
     def tearDown(self):
         """
@@ -52,40 +56,33 @@ class TestKeyManager(unittest.TestCase):
         """
         self.patcher.stop()
 
-    def test_filter(self):
+    def test_call_without_key_id_header(self):
         """
-        Testing filter_factory
+        Testing __call__ to don't set up X-Object-Meta-Key-Id
+        header.
         """
-        factory = key_manager.filter_factory(self.conf)
-        self.assertTrue(callable(factory))
-        self.assertTrue(callable(factory(FakeApp())))
+        for req_type in ('GET', 'HEAD', 'DELETE', 'COPY', 'OPTIONS', 'POST'):
+            resp = self.app({'PATH_INFO': self.account_path,
+                             'REQUEST_METHOD': req_type},
+                            start_response)
+            self.assertFalse('HTTP_X_OBJECT_META_KEY_ID' in resp.body)
 
-    def test_functions_with_fake_driver(self):
+    def test_call_with_object_put(self):
         """
-        Testing key_manager's methods
+        Testing __call__ method to set up X-Object-Meta-Key-Id on
+        PUT object request.
         """
-        app = key_manager.KeyManager(FakeApp, self.conf)
-        account_path = '/Version/MyName/Container/Object'
+        resp = self.app({'PATH_INFO': self.object_path,
+                         'REQUEST_METHOD': 'PUT'},
+                        start_response)
+        self.assertTrue('HTTP_X_OBJECT_META_KEY_ID' in resp.body)
+        self.assertEquals(resp.body['HTTP_X_OBJECT_META_KEY_ID'], '12345')
 
-        # Fake driver return "12345"
-        self.assertEquals(app.get_key_id("anybody"), 12345)
-        self.assertEquals(app.get_account(account_path), "MyName")
-        self.assertRaises(ValueError, app.get_account, account_path[1:])
-
-        # check filter for different types of request
-        for req_type in ['GET', 'HEAD', 'DELETE', 'COPY', 'OPTIONS', 'POST']:
-            resp = app({'PATH_INFO': account_path, 'REQUEST_METHOD': req_type},
-                       start_response)
-            diction = resp.body
-            # Requset not include "key_id"
-            self.assertFalse('HTTP_X_OBJECT_META_KEY_ID' in diction)
-
-        # Request include "key_id", if it is PUT
-        resp = app({'PATH_INFO': account_path, 'REQUEST_METHOD': 'PUT'},
-                   start_response)
-        diction = resp.body
-        self.assertTrue('HTTP_X_OBJECT_META_KEY_ID' in diction)
-        self.assertEquals(diction['HTTP_X_OBJECT_META_KEY_ID'], '12345')
+    def test_call_with_not_object_put(self):
+        for path in (self.account_path, self.container_path):
+            resp = self.app({'PATH_INFO': path, 'REQUEST_METHOD': 'PUT'},
+                            start_response)
+            self.assertFalse('HTTP_X_OBJECT_META_KEY_ID' in resp.body)
 
 
 if __name__ == '__main__':

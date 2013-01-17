@@ -18,11 +18,21 @@ import unittest
 import tempfile
 import mock
 
-from sqlalchemy import exc
 from migrate.exceptions import DatabaseNotControlledError
+from sqlalchemy import create_engine, exc
+from sqlalchemy.schema import MetaData, Table, Column
+from sqlalchemy.types import String, Integer
 
 from swift.common.key_manager.drivers.sql import SQLDriver
 from swift.common.key_manager.drivers.sql.driver import key_info_table
+
+
+meta_test = MetaData()
+table_template = Table("key_info", meta_test,
+                       Column('account', String(42)),
+                       Column('key_id', Integer, primary_key=True,
+                              autoincrement=True),
+                       Column('encryption_key', String(42)))
 
 
 class TestSQLDriver(unittest.TestCase):
@@ -34,7 +44,11 @@ class TestSQLDriver(unittest.TestCase):
         self.db_path = tempfile.mktemp()
         self.url = "sqlite:///%s" % (self.db_path,)
         self.conf = {'crypto_keystore_sql_url': self.url}
-        self.key_driver = SQLDriver(self.conf, initialize_table=False)
+        self.key_driver = SQLDriver(self.conf)
+
+        engine = create_engine(self.url)
+        meta_test.bind = engine
+        table_template.create(engine, checkfirst=True)
 
     def tearDown(self):
         """
@@ -43,20 +57,10 @@ class TestSQLDriver(unittest.TestCase):
         """
         os.remove(self.db_path)
 
-    def test_create_table(self):
-        """
-        Drop table and try to create again.
-        """
-        self.key_driver.create_table()
-        table_name = key_info_table.name
-        self.assertTrue(self.key_driver.engine.has_table(table_name))
-
     def test_find_value(self):
         """
         Find row in table according serching pattern.
         """
-        self.key_driver.create_table()
-
         first_acc_info = ["test_account", "test_key_string"]
         second_acc_info = ["test_account2", "test_key_string2"]
 
@@ -91,8 +95,6 @@ class TestSQLDriver(unittest.TestCase):
         """
         Check key_id value for different account values.
         """
-        self.key_driver.create_table()
-
         acc_info = ["acc1", "acc2"]
         # check key_id for first account (account not existed)
         self.assertEqual(self.key_driver.get_key_id(acc_info[0]), 1)
@@ -107,8 +109,6 @@ class TestSQLDriver(unittest.TestCase):
         """
         Check key value for different account and key_id values.
         """
-        self.key_driver.create_table()
-
         # create 2 account with key_id
         acc_info = ["acc1", "acc2"]
         for acc in acc_info:
@@ -135,8 +135,6 @@ class TestSQLDriver(unittest.TestCase):
         """
         Successful migration.
         """
-        self.key_driver.create_table()
-
         self.key_driver.sync()
         mock_upgrade.assert_called_once_with(self.url, mock.ANY)
 
@@ -146,8 +144,6 @@ class TestSQLDriver(unittest.TestCase):
         """
         Version control table doesn't exist.
         """
-        self.key_driver.create_table()
-
         mock_upgrade.side_effect = [DatabaseNotControlledError, None]
         self.key_driver.sync()
         mock_upgrade.assert_has_calls(2 * [mock.call(self.url, mock.ANY)])
@@ -164,7 +160,7 @@ class TestSQLDriverReconnection(unittest.TestCase):
         self.patcher = mock.patch(
             'swift.common.key_manager.drivers.sql.driver.create_engine')
         self.mock_create_engine = self.patcher.start()
-        self.key_driver = SQLDriver(self.conf, initialize_table=True)
+        self.key_driver = SQLDriver(self.conf)
         self.mock_connect = self.mock_create_engine.return_value.connect
 
     def tearDown(self):

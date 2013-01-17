@@ -49,13 +49,11 @@ class SQLDriver(base.KeyDriver):
     default_connection_attempts = 5
     default_connection_url = 'sqlite:///keystore.sqlite'
 
-    def __init__(self, conf, initialize_table=False):
+    def __init__(self, conf):
         """
         Initialization function.
 
         :param conf: application configuration
-        :param initialize_table: create table into database at
-                                 instance initialization
         """
         super(SQLDriver, self).__init__(conf)
         self.connection_attempts = conf.get(
@@ -64,17 +62,7 @@ class SQLDriver(base.KeyDriver):
         self.connection_url = conf.get('crypto_keystore_sql_url',
                                        self.default_connection_url)
         self.engine = meta.bind = create_engine(self.connection_url)
-
-        if initialize_table:
-            self.create_table()
-
-    def create_table(self):
-        """
-        Try connect to DB and if it is successfully,
-        create key_info_table
-        """
         self.reconnect_to_db()
-        key_info_table.create(self.engine, checkfirst=True)
 
     def reconnect_to_db(self):
         """

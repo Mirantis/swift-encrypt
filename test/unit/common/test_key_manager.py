@@ -65,7 +65,7 @@ class TestSQLDriver(unittest.TestCase):
 
         for data_acc in [first_acc_info, second_acc_info]:
             key_info_table.insert().execute(account=data_acc[0],
-                                        encryption_key=data_acc[1])
+                                            encryption_key=data_acc[1])
 
         # check, that result empty , if such information not exist in DataBase
         self.assertFalse(self.key_driver.find_value("account", "my_account"))

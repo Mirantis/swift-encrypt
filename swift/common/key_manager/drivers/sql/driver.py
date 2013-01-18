@@ -36,10 +36,10 @@ from swift.common.key_manager.drivers.sql import migrate_repo
 
 meta = MetaData()
 key_info_table = Table("key_info", meta,
-        Column('account', String(30)),
-        Column('key_id', Integer, primary_key=True, autoincrement=True),
-        Column('encryption_key', String(30))
-)
+                       Column('account', String(30)),
+                       Column('key_id', Integer, primary_key=True,
+                              autoincrement=True),
+                       Column('encryption_key', String(30)))
 
 
 class SQLDriver(base.KeyDriver):
@@ -59,8 +59,8 @@ class SQLDriver(base.KeyDriver):
         """
         super(SQLDriver, self).__init__(conf)
         self.connection_attempts = conf.get(
-                'crypto_keystore_sql_connection_attempts',
-                self.default_connection_attempts)
+            'crypto_keystore_sql_connection_attempts',
+            self.default_connection_attempts)
         self.connection_url = conf.get('crypto_keystore_sql_url',
                                        self.default_connection_url)
         self.engine = meta.bind = create_engine(self.connection_url)

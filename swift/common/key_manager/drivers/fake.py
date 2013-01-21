@@ -18,10 +18,10 @@ Fake driver for KeyDriver class.
 Fake methods for testing other implemented components.
 """
 
-from .base import KeyDriver
+from swift.common.key_manager.drivers import base
 
 
-class FakeDriver(KeyDriver):
+class FakeDriver(base.KeyDriver):
     """ Fake driver for testing key store services """
 
     def get_key(self, key_id):
@@ -43,3 +43,10 @@ class FakeDriver(KeyDriver):
         """
         key_id = 12345
         return key_id
+
+    def sync(self):
+        """
+        The fake driver doesn't need to synchronize data storage
+        schemas.
+        """
+        pass

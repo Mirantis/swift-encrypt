@@ -47,3 +47,10 @@ class KeyDriver(object):
         """
         raise NotImplementedError("Not implemented get_key_id function. "
                                   "Maybe incorrect driver")
+
+    def sync(self):
+        """
+        Some synchronization operations can be achieved in cases of changing
+        a structure of data storage.
+        """
+        raise NotImplementedError()

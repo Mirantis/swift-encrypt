@@ -19,8 +19,10 @@ import tempfile
 import mock
 
 from sqlalchemy import exc
+from migrate.exceptions import DatabaseNotControlledError
 
-from swift.common.key_manager.drivers.sql import SQLDriver, key_info_table
+from swift.common.key_manager.drivers.sql import SQLDriver
+from swift.common.key_manager.drivers.sql.driver import key_info_table
 
 
 class TestSQLDriver(unittest.TestCase):
@@ -128,6 +130,30 @@ class TestSQLDriver(unittest.TestCase):
         for val in test:
             self.assertRaises(TypeError, self.key_driver.get_key, val)
 
+    @mock.patch('migrate.versioning.api.upgrade')
+    def test_sync_success(self, mock_upgrade):
+        """
+        Successful migration.
+        """
+        self.key_driver.create_table()
+
+        self.key_driver.sync()
+        mock_upgrade.assert_called_once_with(self.url, mock.ANY)
+
+    @mock.patch('migrate.versioning.api.version_control')
+    @mock.patch('migrate.versioning.api.upgrade')
+    def test_sync_failed(self, mock_upgrade, mock_version_control):
+        """
+        Version control table doesn't exist.
+        """
+        self.key_driver.create_table()
+
+        mock_upgrade.side_effect = [DatabaseNotControlledError, None]
+        self.key_driver.sync()
+        mock_upgrade.assert_has_calls(2 * [mock.call(self.url, mock.ANY)])
+        mock_version_control.assert_called_once_with(self.url, mock.ANY)
+
+
 class TestSQLDriverReconnection(unittest.TestCase):
     def setUp(self):
         """
@@ -136,9 +162,9 @@ class TestSQLDriverReconnection(unittest.TestCase):
         """
         self.conf = {'crypto_keystore_sql_url': 'fake'}
         self.patcher = mock.patch(
-            'swift.common.key_manager.drivers.sql.create_engine')
+            'swift.common.key_manager.drivers.sql.driver.create_engine')
         self.mock_create_engine = self.patcher.start()
-        self.key_driver = SQLDriver(self.conf)#, initialize_table=False)
+        self.key_driver = SQLDriver(self.conf, initialize_table=True)
         self.mock_connect = self.mock_create_engine.return_value.connect
 
     def tearDown(self):

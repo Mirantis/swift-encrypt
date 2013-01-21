@@ -27,8 +27,11 @@ import os
 from sqlalchemy import create_engine, exc
 from sqlalchemy.schema import MetaData, Table, Column
 from sqlalchemy.types import String, Integer
+from migrate.versioning import api as versioning_api
+from migrate import exceptions as versioning_exceptions
 
-from .base import KeyDriver
+from swift.common.key_manager.drivers import base
+from swift.common.key_manager.drivers.sql import migrate_repo
 
 
 meta = MetaData()
@@ -39,14 +42,14 @@ key_info_table = Table("key_info", meta,
 )
 
 
-class SQLDriver(KeyDriver):
+class SQLDriver(base.KeyDriver):
     """
     Driver for cooperation proxy and object servers with keys storage.
     """
     default_connection_attempts = 5
     default_connection_url = 'sqlite:///keystore.sqlite'
 
-    def __init__(self, conf, initialize_table=True):
+    def __init__(self, conf, initialize_table=False):
         """
         Initialization function.
 
@@ -161,3 +164,14 @@ class SQLDriver(KeyDriver):
         column = key_info_table.c[col_name]
         # use select method
         return key_info_table.select(column == val).execute().fetchall()
+
+    def sync(self):
+        """
+        Migrate database schemas.
+        """
+        repo_path = os.path.abspath(os.path.dirname(migrate_repo.__file__))
+        try:
+            versioning_api.upgrade(self.connection_url, repo_path)
+        except versioning_exceptions.DatabaseNotControlledError:
+            versioning_api.version_control(self.connection_url, repo_path)
+            versioning_api.upgrade(self.connection_url, repo_path)

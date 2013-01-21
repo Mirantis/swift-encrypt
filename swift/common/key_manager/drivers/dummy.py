@@ -16,10 +16,10 @@
 
 import hashlib
 
-from .base import KeyDriver
+from swift.common.key_manager.drivers import base
 
 
-class DummyDriver(KeyDriver):
+class DummyDriver(base.KeyDriver):
     """
     Dummy key manager dirver which just return md5sum of account name
     and key_id equal key.
@@ -42,3 +42,10 @@ class DummyDriver(KeyDriver):
         :returns: key which actually equal to md5sum of account
         """
         return hashlib.md5(account).hexdigest()
+
+    def sync(self):
+        """
+        The dummy driver doesn't need to synchronize data storage
+        schemas.
+        """
+        pass

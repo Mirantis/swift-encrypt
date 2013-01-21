@@ -35,6 +35,7 @@ setup(
     author_email='openstack-admins@lists.launchpad.net',
     url='https://launchpad.net/swift',
     packages=find_packages(exclude=['test', 'bin']),
+    include_package_data=True,
     test_suite='nose.collector',
     classifiers=[
         'Development Status :: 5 - Production/Stable',
@@ -66,6 +67,7 @@ setup(
         'bin/swift-form-signature',
         'bin/swift-get-nodes',
         'bin/swift-init',
+        'bin/swift-key-manager-sync',
         'bin/swift-object-auditor',
         'bin/swift-object-expirer',
         'bin/swift-object-info',

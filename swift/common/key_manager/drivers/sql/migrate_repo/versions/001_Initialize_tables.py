@@ -28,4 +28,4 @@ def upgrade(migrate_engine):
 def downgrade(migrate_engine):
     meta = MetaData(bind=migrate_engine)
     table = Table('key_info', meta, autoload=True)
-    table.remove()
+    table.drop()

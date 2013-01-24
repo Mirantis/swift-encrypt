@@ -36,10 +36,10 @@ from swift.common.key_manager.drivers.sql import migrate_repo
 
 meta = MetaData()
 key_info_table = Table("key_info", meta,
-                       Column('account', String(30)),
+                       Column('account', String(42)),
                        Column('key_id', Integer, primary_key=True,
                               autoincrement=True),
-                       Column('encryption_key', String(30)))
+                       Column('encryption_key', String(42)))
 
 
 class SQLDriver(base.KeyDriver):
@@ -137,7 +137,7 @@ class SQLDriver(base.KeyDriver):
             # For openssl standart key consist of 16 hex chars
             key = os.urandom(16)
             # change format for store key in database
-            enc_key = base64.b64encode(key)
+            enc_key = base64.b16encode(key)
             # check connection to database
             self.reconnect_to_db()
             # select key_id column
@@ -148,7 +148,7 @@ class SQLDriver(base.KeyDriver):
             update_method.execute(encryption_key=enc_key)
             return key
 
-        key = base64.b64decode(re[0][2])
+        key = base64.b16decode(re[0][2])
         return key
 
     def find_value(self, col_name, val):

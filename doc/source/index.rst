@@ -55,6 +55,7 @@ Overview and Concepts
     overview_expiring_objects
     cors
     associated_projects
+    overview_on-disk_encryption
 
 Developer Documentation
 =======================

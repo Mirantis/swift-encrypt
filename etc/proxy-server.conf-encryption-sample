@@ -339,7 +339,7 @@ use = egg:swift#key_manager
 # crypto_keystore_driver = swift.common.key_manager.drivers.dummy.DummyDriver
 ## To enable FakeDriver which use only one hardcoded key, uncomment next line:
 # crypto_keystore_driver = swift.common.key_manager.drivers.fake.FakeDriver
-## To ebale SQLDriver which generate keys and store it into SQL database,
+## To enable SQLDriver which generate keys and store it into SQL database,
 ## uncomment next line:
 # crypto_keystore_driver = swift.common.key_manager.drivers.sql.SQLDriver
 ## SQLDriver support connection URI for SQLAlchemy, it's required if used

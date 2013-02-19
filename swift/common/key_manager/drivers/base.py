@@ -54,3 +54,20 @@ class KeyDriver(object):
         a structure of data storage.
         """
         raise NotImplementedError()
+
+    @staticmethod
+    def validate_key_id(key_id):
+        """
+        Checks key_id to be a number
+
+        :raise ValueError: if key_id isn't converted to positive number
+        """
+        if key_id:
+            try:
+                k_id = long(key_id)
+            except ValueError:
+                    raise ValueError("Incorrect value %r. String must include "
+                                     "only digits chars." % (key_id,))
+            if k_id < 0:
+                    raise ValueError("Incorrect value %r. Only positive "
+                                     "numbers are allowed." % (key_id,))

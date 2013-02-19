@@ -662,14 +662,15 @@ class ObjectController(object):
         """Handle HTTP PUT requests for the Swift Object Server."""
         start_time = time.time()
         key_id = request.headers.get('x-object-meta-key-id')
-        encryption_context = self.crypto_driver.encryption_context(key_id)
         try:
             device, partition, account, container, obj = \
                 split_path(unquote(request.path), 5, 5, True)
             validate_device_partition(device, partition)
+            self.key_manager.validate_key_id(key_id)
         except ValueError, err:
             return HTTPBadRequest(body=str(err), request=request,
                                   content_type='text/plain')
+        encryption_context = self.crypto_driver.encryption_context(key_id)
         if self.mount_check and not check_mount(self.devices, device):
             return HTTPInsufficientStorage(drive=device, request=request)
         if 'x-timestamp' not in request.headers or \

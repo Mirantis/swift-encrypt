@@ -24,7 +24,8 @@ from sqlalchemy.schema import MetaData, Table, Column
 from sqlalchemy.types import String, Integer
 
 from swift.common.key_manager.drivers.sql import SQLDriver
-from swift.common.key_manager.drivers.sql.driver import key_info_table
+from swift.common.key_manager.drivers.sql.driver import Key, Session,\
+     generate_key
 
 
 meta_test = MetaData()
@@ -48,6 +49,7 @@ class TestSQLDriver(unittest.TestCase):
 
         engine = create_engine(self.url)
         meta_test.bind = engine
+        Session.configure(bind=engine)
         table_template.create(engine, checkfirst=True)
 
     def tearDown(self):
@@ -56,40 +58,6 @@ class TestSQLDriver(unittest.TestCase):
         swift.common.key_manager.drivers.sql.SQLDriver.
         """
         os.remove(self.db_path)
-
-    def test_find_value(self):
-        """
-        Find row in table according serching pattern.
-        """
-        first_acc_info = ["test_account", "test_key_string"]
-        second_acc_info = ["test_account2", "test_key_string2"]
-
-        answer1 = [('test_account', 1L, 'test_key_string')]
-        answer2 = [('test_account2', 2L, 'test_key_string2')]
-
-        for data_acc in [first_acc_info, second_acc_info]:
-            key_info_table.insert().execute(account=data_acc[0],
-                                            encryption_key=data_acc[1])
-
-        # check, that result empty , if such information not exist in DataBase
-        self.assertFalse(self.key_driver.find_value("account", "my_account"))
-
-        # check, results for currect find requests
-        # First answer
-        res = self.key_driver.find_value("account", first_acc_info[0])
-        self.assertEquals(res, answer1)
-        res = self.key_driver.find_value("encryption_key", first_acc_info[1])
-        self.assertEquals(res, answer1)
-        res = self.key_driver.find_value("key_id", "1")
-        self.assertEquals(res, answer1)
-
-        # Second answer
-        res = self.key_driver.find_value("account", second_acc_info[0])
-        self.assertEquals(res, answer2)
-        res = self.key_driver.find_value("encryption_key", second_acc_info[1])
-        self.assertEquals(res, answer2)
-        res = self.key_driver.find_value("key_id", "2")
-        self.assertEquals(res, answer2)
 
     def test_get_key_id(self):
         """
@@ -111,8 +79,10 @@ class TestSQLDriver(unittest.TestCase):
         """
         # create 2 account with key_id
         acc_info = ["acc1", "acc2"]
+        session = Session()
         for acc in acc_info:
-            key_info_table.insert().execute(account=acc)
+            session.add(Key(acc, generate_key()))
+        session.commit()
         # check key for first account
         key1 = self.key_driver.get_key(1)
         key2 = self.key_driver.get_key(1)
@@ -123,12 +93,7 @@ class TestSQLDriver(unittest.TestCase):
         self.assertNotEqual(key2, key3)
         # check raise, if incorrect id (no in table)
         self.assertRaises(StandardError, self.key_driver.get_key, 100)
-        # check raise, if incorrect id (string and have not only digits)
-        self.assertRaises(ValueError, self.key_driver.get_key, "id100")
-        # check raise, if incorrect id (not string or int)
-        test = [[2], {"test": "test"}, (222, 2)]
-        for val in test:
-            self.assertRaises(TypeError, self.key_driver.get_key, val)
+        session.close()
 
     @mock.patch('migrate.versioning.api.upgrade')
     def test_sync_success(self, mock_upgrade):
@@ -148,6 +113,15 @@ class TestSQLDriver(unittest.TestCase):
         self.key_driver.sync()
         mock_upgrade.assert_has_calls(2 * [mock.call(self.url, mock.ANY)])
         mock_version_control.assert_called_once_with(self.url, mock.ANY)
+
+    def test_invalid_key_id(self):
+        self.assertRaises(ValueError,
+                         self.key_driver.validate_key_id, "n0tnumb3r")
+        self.assertRaises(ValueError,
+                         self.key_driver.validate_key_id, "-13")
+
+    def test_valid_key_id(self):
+        self.assertEqual(None, self.key_driver.validate_key_id("42"))
 
 
 class TestSQLDriverReconnection(unittest.TestCase):

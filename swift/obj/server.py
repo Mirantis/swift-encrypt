@@ -113,8 +113,10 @@ class DiskFile(object):
 
     def __init__(self, path, device, partition, account, container, obj,
                  logger, keep_data_fp=False, disk_chunk_size=65536,
-                 iter_hook=None, encryption_context=None, crypto_driver=None):
+                 origin_disk_chunk_size=65536, iter_hook=None,
+                 encryption_context=None, crypto_driver=None):
         self.disk_chunk_size = disk_chunk_size
+        self.origin_disk_chunk_size = origin_disk_chunk_size
         self.iter_hook = iter_hook
         self.name = '/' + '/'.join((account, container, obj))
         name_hash = hash_path(account, container, obj)
@@ -203,13 +205,20 @@ class DiskFile(object):
 
     def app_iter_range(self, start, stop):
         """Returns an iterator over the data file for range (start, stop)"""
+        start_offset = start % self.origin_disk_chunk_size
         if start or start == 0:
-            self.fp.seek(start)
+            start_block = ((start / self.origin_disk_chunk_size) *
+                           self.disk_chunk_size)
+            self.fp.seek(start_block)
         if stop is not None:
             length = stop - start
         else:
             length = None
+        is_first_chunk = True
         for chunk in self:
+            if is_first_chunk:
+                chunk = chunk[start_offset:]
+                is_first_chunk = False
             if length is not None:
                 length -= len(chunk)
                 if length < 0:
@@ -431,12 +440,12 @@ class ObjectController(object):
         self.node_timeout = int(conf.get('node_timeout', 3))
         self.conn_timeout = float(conf.get('conn_timeout', 0.5))
         self.network_chunk_size = int(conf.get('network_chunk_size', 65536))
-        disk_chunk_size = int(conf.get('disk_chunk_size', 65536))
+        self.origin_disk_chunk_size = int(conf.get('disk_chunk_size', 65536))
         key_id = self.key_manager.get_key_id('default')
         encryption_context = self.crypto_driver.encryption_context(key_id)
         self.disk_chunk_size = \
             self.crypto_driver.encrypted_chunk_size(encryption_context,
-                                                    disk_chunk_size)
+                                                   self.origin_disk_chunk_size)
         self.keep_cache_size = int(conf.get('keep_cache_size', 5242880))
         self.keep_cache_private = \
             config_true_value(conf.get('keep_cache_private', 'false'))
@@ -619,6 +628,7 @@ class ObjectController(object):
             return HTTPInsufficientStorage(drive=device, request=request)
         file = DiskFile(self.devices, device, partition, account, container,
                         obj, self.logger, disk_chunk_size=self.disk_chunk_size,
+                        origin_disk_chunk_size=self.origin_disk_chunk_size,
                         crypto_driver=self.crypto_driver)
 
         if file.is_deleted() or file.is_expired():
@@ -675,6 +685,7 @@ class ObjectController(object):
                                   content_type='text/plain')
         file = DiskFile(self.devices, device, partition, account, container,
                         obj, self.logger, disk_chunk_size=self.disk_chunk_size,
+                        origin_disk_chunk_size=self.origin_disk_chunk_size,
                         encryption_context=encryption_context,
                         crypto_driver=self.crypto_driver)
         orig_timestamp = file.metadata.get('X-Timestamp')
@@ -780,8 +791,9 @@ class ObjectController(object):
             return HTTPInsufficientStorage(drive=device, request=request)
         file = DiskFile(self.devices, device, partition, account, container,
                         obj, self.logger, keep_data_fp=True,
-                        disk_chunk_size=self.disk_chunk_size, iter_hook=sleep,
-                        crypto_driver=self.crypto_driver)
+                        disk_chunk_size=self.disk_chunk_size,
+                        origin_disk_chunk_size=self.origin_disk_chunk_size,
+                        iter_hook=sleep, crypto_driver=self.crypto_driver)
         if file.is_deleted() or file.is_expired():
             if request.headers.get('if-match') == '*':
                 return HTTPPreconditionFailed(request=request)
@@ -862,6 +874,7 @@ class ObjectController(object):
             return HTTPInsufficientStorage(drive=device, request=request)
         file = DiskFile(self.devices, device, partition, account, container,
                         obj, self.logger, disk_chunk_size=self.disk_chunk_size,
+                        origin_disk_chunk_size=self.origin_disk_chunk_size,
                         crypto_driver=self.crypto_driver)
         if file.is_deleted() or file.is_expired():
             return HTTPNotFound(request=request)
@@ -906,6 +919,7 @@ class ObjectController(object):
         response_class = HTTPNoContent
         file = DiskFile(self.devices, device, partition, account, container,
                         obj, self.logger, disk_chunk_size=self.disk_chunk_size,
+                        origin_disk_chunk_size=self.origin_disk_chunk_size,
                         crypto_driver=self.crypto_driver)
         if 'x-if-delete-at' in request.headers and \
                 int(request.headers['x-if-delete-at']) != \

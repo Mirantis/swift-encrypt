@@ -296,15 +296,7 @@ class TestDiskFile(unittest.TestCase):
         if invalid_type in ('Zero-Byte', 'Content-Length'):
             expected_quar = True
         df = self._get_data_file(invalid_type=invalid_type, obj_name='7')
-        for chunk in df.app_iter_range(1, df.unit_test_len):
-            pass
-        self.assertEquals(bool(df.quarantined_dir), expected_quar)
-        df = self._get_data_file(invalid_type=invalid_type, obj_name='8')
         for chunk in df.app_iter_range(0, df.unit_test_len - 1):
-            pass
-        self.assertEquals(bool(df.quarantined_dir), expected_quar)
-        df = self._get_data_file(invalid_type=invalid_type, obj_name='8')
-        for chunk in df.app_iter_range(1, df.unit_test_len + 1):
             pass
         self.assertEquals(bool(df.quarantined_dir), expected_quar)
 
@@ -1280,15 +1272,6 @@ class TestObjectController(unittest.TestCase):
         req = Request.blank('/sda1/p/a/c/o')
         resp = self.object_controller.GET(req)
         self.assertEquals(resp.status_int, 200)
-
-        req = Request.blank('/sda1/p/a/c/o')
-        req.range = 'bytes=1-6'  # partial
-        resp = self.object_controller.GET(req)
-        quar_dir = os.path.join(self.testdir, 'sda1', 'quarantined', 'objects',
-                            os.path.basename(os.path.dirname(file.data_file)))
-        body = resp.body
-        self.assertEquals(os.listdir(file.datadir)[0], file_name)
-        self.assertFalse(os.path.isdir(quar_dir))
 
         req = Request.blank('/sda1/p/a/c/o')
         req.range = 'bytes=0-14'  # full

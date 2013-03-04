@@ -56,33 +56,34 @@ class TestKeyManager(unittest.TestCase):
         """
         self.patcher.stop()
 
+    def test_call_with_key_id_header(self):
+        """
+        Testing __call__ to set up X-Object-Meta-Key-Id
+        """
+        for method in ('POST', 'PUT'):
+            resp = self.app({'PATH_INFO': self.object_path,
+                             'REQUEST_METHOD': method},
+                             start_response)
+            self.assertTrue('HTTP_X_OBJECT_META_KEY_ID' in resp.body,
+                            "Method: %r" % (method))
+            self.assertEquals(resp.body['HTTP_X_OBJECT_META_KEY_ID'], '12345')
+
     def test_call_without_key_id_header(self):
         """
         Testing __call__ to don't set up X-Object-Meta-Key-Id
         header.
         """
-        for req_type in ('GET', 'HEAD', 'DELETE', 'COPY', 'OPTIONS', 'POST'):
-            resp = self.app({'PATH_INFO': self.account_path,
-                             'REQUEST_METHOD': req_type},
-                            start_response)
-            self.assertFalse('HTTP_X_OBJECT_META_KEY_ID' in resp.body)
-
-    def test_call_with_object_put(self):
-        """
-        Testing __call__ method to set up X-Object-Meta-Key-Id on
-        PUT object request.
-        """
-        resp = self.app({'PATH_INFO': self.object_path,
-                         'REQUEST_METHOD': 'PUT'},
-                        start_response)
-        self.assertTrue('HTTP_X_OBJECT_META_KEY_ID' in resp.body)
-        self.assertEquals(resp.body['HTTP_X_OBJECT_META_KEY_ID'], '12345')
-
-    def test_call_with_not_object_put(self):
-        for path in (self.account_path, self.container_path):
-            resp = self.app({'PATH_INFO': path, 'REQUEST_METHOD': 'PUT'},
-                            start_response)
-            self.assertFalse('HTTP_X_OBJECT_META_KEY_ID' in resp.body)
+        for method in ('GET', 'HEAD', 'DELETE', 'COPY', 'OPTIONS',
+                         'POST', 'PUT'):
+            for path in (self.account_path, self.container_path,
+                         self.object_path):
+                if method in ('PUT', 'POST') and path == self.object_path:
+                    continue
+                resp = self.app({'PATH_INFO': path,
+                                 'REQUEST_METHOD': method},
+                                 start_response)
+                self.assertFalse('HTTP_X_OBJECT_META_KEY_ID' in resp.body,
+                                 "Method: %r, Path: %r" % (method, path))
 
 
 if __name__ == '__main__':

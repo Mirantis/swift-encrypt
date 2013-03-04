@@ -68,7 +68,7 @@ class KeyManager(object):
         :return self.app: standart next WSGI app in the pipeline
         """
         req = Request(env)
-        if req.method == 'PUT':
+        if req.method in ('PUT', 'POST'):
             _, account, container, obj = split_path(req.path, 1, 4, True)
             if account and container and obj:
                 key_id = self.get_key_id(account)

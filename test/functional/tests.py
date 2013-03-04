@@ -631,6 +631,7 @@ class TestContainer(Base):
                 files = [x['name'] for x in files]
             self.assertEquals(sorted(files, cmp=locale.strcoll), files)
 
+    @unittest.skip("Wait known-issue STF-73")
     def testContainerInfo(self):
         info = self.env.container.info()
         self.assert_status(204)
@@ -1412,6 +1413,7 @@ class TestFile(Base):
             self.assert_status(200)
             self.assertEquals(file.metadata, metadata)
 
+    @unittest.skip("Wait known-issue STF-73")
     def testSerialization(self):
         container = self.env.account.container(Utils.create_name())
         self.assert_(container.create())

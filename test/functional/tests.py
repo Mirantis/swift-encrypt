@@ -880,6 +880,7 @@ class TestFile(Base):
     env = TestFileEnv
     set_up = False
 
+    @unittest.skip("Wait known-issue STF-121")
     def testCopy(self):
         # makes sure to test encoded characters"
         source_filename = 'dealde%2Fl04 011e%204c8df/flash.png'
@@ -967,6 +968,7 @@ class TestFile(Base):
                      cfg={'destination': Utils.create_name()}))
         self.assert_status(412)
 
+    @unittest.skip("Wait known-issue STF-121")
     def testCopyFromHeader(self):
         source_filename = Utils.create_name()
         file = self.env.container.file(source_filename)
@@ -1077,6 +1079,7 @@ class TestFile(Base):
         self.assertRaises(ResponseError, file.write_random)
         self.assert_status(400)
 
+    @unittest.skip("Wait known-issue STF-121")
     def testMetadataNumberLimit(self):
         number_limit = load_constraint('max_meta_count')
         size_limit = load_constraint('max_meta_overall_size')
@@ -1335,6 +1338,7 @@ class TestFile(Base):
         self.assertRaises(ResponseError, file.info)
         self.assert_status(404)
 
+    @unittest.skip("Wait known-issue STF-121")
     def testMetadataOnPost(self):
         file = self.env.container.file(Utils.create_name())
         file.write_random(self.env.file_size)
@@ -1392,6 +1396,7 @@ class TestFile(Base):
         self.assertRaises(ResponseError, file.sync_metadata)
         self.assert_status(404)
 
+    @unittest.skip("Wait known-issue STF-121")
     def testMetadataOnPut(self):
         for i in range(10):
             metadata = {}

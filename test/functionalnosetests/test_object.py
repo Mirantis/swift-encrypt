@@ -295,6 +295,7 @@ class TestObject(unittest.TestCase):
         resp.read()
         self.assertEquals(resp.status, 204)
 
+    @unittest.skip("Wait known-issue STF-95")
     def test_manifest(self):
         if skip:
             raise SkipTest

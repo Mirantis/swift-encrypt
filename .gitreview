@@ -1,5 +1,6 @@
 [gerrit]
 host=gerrit.mirantis.com
 port=29418
-project=swift-task-force/swift-task-force.git
-defaultbranch=master
+project=openstack/swift.git
+defaultbranch=openstack-rnd/encryption
+defaultremote=gerrit-mirantis

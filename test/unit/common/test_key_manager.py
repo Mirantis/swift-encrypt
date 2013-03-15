@@ -25,7 +25,7 @@ from sqlalchemy.types import String, Integer
 
 from swift.common.key_manager.drivers.sql import SQLDriver
 from swift.common.key_manager.drivers.sql.driver import Key, Session,\
-     generate_key
+     generate_key, ping_connection
 
 
 meta_test = MetaData()
@@ -46,7 +46,12 @@ class TestSQLDriver(unittest.TestCase):
         self.url = "sqlite:///%s" % (self.db_path,)
         self.conf = {'crypto_keystore_sql_url': self.url}
         self.key_driver = SQLDriver(self.conf)
+        self.dbapi_connection = mock.Mock()
 
+        cursor = mock.Mock()
+        cursor.execute = mock.Mock()
+        self.dbapi_connection.cursor.return_value = cursor
+        self.dbapi_connection.OperationalError = exc.OperationalError
         engine = create_engine(self.url)
         meta_test.bind = engine
         Session.configure(bind=engine)
@@ -123,65 +128,33 @@ class TestSQLDriver(unittest.TestCase):
     def test_valid_key_id(self):
         self.assertEqual(None, self.key_driver.validate_key_id("42"))
 
+    def test_succesful_ping(self):
+        self.dbapi_connection.cursor().execute.return_value = None
+        self.assertEqual(None,
+                        ping_connection(self.dbapi_connection, None, None))
 
-class TestSQLDriverReconnection(unittest.TestCase):
-    def setUp(self):
-        """
-        Set up for testing reconnection to database of
-        swift.common.key_manager.driver.sql.SQLDriver class.
-        """
-        self.conf = {'crypto_keystore_sql_url': 'fake'}
-        self.patcher = mock.patch(
-            'swift.common.key_manager.drivers.sql.driver.create_engine')
-        self.mock_create_engine = self.patcher.start()
-        self.key_driver = SQLDriver(self.conf)
-        self.mock_connect = self.mock_create_engine.return_value.connect
+    def test_connection_problems(self):
+        error = exc.OperationalError(None, None, None)
+        #typical situations when connection should be removed from a pool
+        for code in (2006, 2013, 2014, 2045, 2055):
+            error.args = [code, 'connection need to be removed']
+            self.dbapi_connection.cursor().execute.side_effect = error
+            self.assertRaises(exc.DisconnectionError, ping_connection,
+                            self.dbapi_connection, None, None)
 
-    def tearDown(self):
-        """
-        Tear down of testing reconnection to database of
-        swift.common.key_manager.driver.sql.SQLDriver class.
-        """
-        self.patcher.stop()
-
-    def test_on_init(self):
-        """
-        Check reconnection on driver initialization.
-        """
-        self.assertEqual(self.key_driver.engine.connect.call_count, 1)
-
-    def test_success(self):
-        """
-        Check reconnect on happy path.
-        """
-        self.mock_connect.reset_mock()
-
-        self.key_driver.reconnect_to_db()
-        self.assertEqual(self.key_driver.engine.connect.call_count, 1)
-
-    def test_db_failed(self):
-        """
-        Connection always fails try to fixed attempts count.
-        """
-        self.mock_connect.reset_mock()
-
-        self.key_driver.engine.connect.side_effect = exc.SQLAlchemyError
-        self.assertRaises(exc.SQLAlchemyError, self.key_driver.reconnect_to_db)
-        attempts = self.key_driver.engine.connect.call_count
-        self.assertEquals(self.key_driver.connection_attempts, attempts)
-
-    def test_failed_success(self):
-        """
-        First two connections fails but third successful.
-        """
-        self.mock_connect.reset_mock()
-
-        connect_results = [exc.SQLAlchemyError, exc.SQLAlchemyError, 1]
-        self.key_driver.engine.connect.side_effect = connect_results
-
-        self.key_driver.reconnect_to_db()
-
-        self.assertEquals(self.key_driver.engine.connect.call_count, 3)
+    def test_unknown_problem(self):
+        error = exc.OperationalError(None, None, None)
+        #expected exception type with unexpected error code, raised further
+        error.args = [2000, "CR_UNKNOWN_ERROR"]
+        self.dbapi_connection.cursor().execute.side_effect = error
+        self.assertRaises(exc.OperationalError, ping_connection,
+                            self.dbapi_connection, None, None)
+        error = StandardError()
+        #unexpected error, shouldn't be catched
+        error.args = [42, 'all is lost']
+        self.dbapi_connection.cursor().execute.side_effect = error
+        self.assertRaises(StandardError, ping_connection,
+                            self.dbapi_connection, None, None)
 
 
 if __name__ == '__main__':

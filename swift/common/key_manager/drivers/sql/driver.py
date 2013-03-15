@@ -24,7 +24,7 @@ This library include methods for managing encryption key, such as:
 import base64
 import os
 
-from sqlalchemy import create_engine, exc, orm
+from sqlalchemy import create_engine, exc, event
 from sqlalchemy.schema import Column
 from sqlalchemy.types import String, Integer
 from sqlalchemy.ext.declarative import declarative_base
@@ -64,7 +64,6 @@ class SQLDriver(base.KeyDriver):
     """
     Driver for cooperation proxy and object servers with keys storage.
     """
-    default_connection_attempts = 5
     default_connection_url = 'sqlite:///keystore.sqlite'
 
     def __init__(self, conf):
@@ -74,30 +73,11 @@ class SQLDriver(base.KeyDriver):
         :param conf: application configuration
         """
         super(SQLDriver, self).__init__(conf)
-        self.connection_attempts = conf.get(
-            'crypto_keystore_sql_connection_attempts',
-            self.default_connection_attempts)
         self.connection_url = conf.get('crypto_keystore_sql_url',
                                        self.default_connection_url)
         self.engine = create_engine(self.connection_url)
-        self.reconnect_to_db()
-
-    def reconnect_to_db(self):
-        """
-        Try connect to DB,
-        if it is successfully -> break
-        else raise Exception
-
-        :raise exc.SQLAlchemyError: if cann't connect to db
-        """
-        for i in range(self.connection_attempts):
-            try:
-                self.engine.connect()
-            except exc.SQLAlchemyError:
-                if i == self.connection_attempts - 1:
-                    raise
-            else:
-                break
+        if self.engine.name is'mysql':
+            event.listen(self.engine, 'checkout', ping_connection)
 
     def get_key_id(self, acc_name):
         """Give key_id is associated by account.
@@ -127,7 +107,6 @@ class SQLDriver(base.KeyDriver):
 
         :raise StandardError: if DB don't have row with current key_id
         """
-        self.reconnect_to_db()
         session = Session(bind=self.engine)
         re = session.query(Key).filter(Key.key_id == key_id).all()
         if not re:
@@ -147,6 +126,20 @@ class SQLDriver(base.KeyDriver):
         except versioning_exceptions.DatabaseNotControlledError:
             versioning_api.version_control(self.connection_url, repo_path)
             versioning_api.upgrade(self.connection_url, repo_path)
+
+
+def ping_connection(dbapi_connection, connection_record, connection_proxy):
+    cursor = dbapi_connection.cursor()
+    try:
+        cursor.execute("SELECT 1")
+    except dbapi_connection.OperationalError, ex:
+        if ex.args[0] in (2006, 2013, 2014, 2045, 2055):
+            # raise DisconnectionError - pool will try
+            # connecting again up to three times before raising.
+            raise exc.DisconnectionError()
+        else:
+            raise
+    cursor.close()
 
 
 def generate_key():

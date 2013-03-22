@@ -52,8 +52,9 @@ class Key(Base):
         self.encryption_key = encryption_key
 
     def __eq__(self, other):
-        return self.account == other.account and self.key_id == other.key_id\
-                    and self.encryption_key == other.encryption_key
+        return (self.account == other.account and
+                self.key_id == other.key_id and
+                self.encryption_key == other.encryption_key)
 
     def __ne__(self, other):
         return not self.__eq__(other)

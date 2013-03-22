@@ -190,7 +190,7 @@ class DiskFile(object):
                         dropped_cache = read
                     if self.crypto_driver:
                         chunk = self.crypto_driver.decrypt(
-                                    self.encryption_context, chunk)
+                            self.encryption_context, chunk)
                     yield chunk
                     if self.iter_hook:
                         self.iter_hook()
@@ -405,7 +405,7 @@ class DiskFile(object):
                             'Content-Length of %s does not match file size '
                             'of %s' % (metadata_size, file_size))
                 original_file_size = \
-                        int(self.metadata['Original-Content-Length'])
+                    int(self.metadata['Original-Content-Length'])
                 if original_file_size:
                     return original_file_size
                 else:
@@ -443,9 +443,8 @@ class ObjectController(object):
         self.origin_disk_chunk_size = int(conf.get('disk_chunk_size', 65536))
         key_id = self.key_manager.get_key_id('default')
         encryption_context = self.crypto_driver.encryption_context(key_id)
-        self.disk_chunk_size = \
-            self.crypto_driver.encrypted_chunk_size(encryption_context,
-                                                   self.origin_disk_chunk_size)
+        self.disk_chunk_size = self.crypto_driver.encrypted_chunk_size(
+            encryption_context, self.origin_disk_chunk_size)
         self.keep_cache_size = int(conf.get('keep_cache_size', 5242880))
         self.keep_cache_private = \
             config_true_value(conf.get('keep_cache_private', 'false'))
@@ -731,8 +730,8 @@ class ObjectController(object):
                 return HTTPClientDisconnect(request=request)
             etag = etag.hexdigest()
             etag_orig = etag_orig.hexdigest()
-            if ('etag' in request.headers and \
-                request.headers['etag'].lower() != etag_orig):
+            if ('etag' in request.headers and
+                    request.headers['etag'].lower() != etag_orig):
                 return HTTPUnprocessableEntity(request=request)
             metadata = {
                 'X-Timestamp': request.headers['x-timestamp'],

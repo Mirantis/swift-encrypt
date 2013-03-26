@@ -46,12 +46,10 @@ class TestSQLDriver(unittest.TestCase):
         self.url = "sqlite:///%s" % (self.db_path,)
         self.conf = {'crypto_keystore_sql_url': self.url}
         self.key_driver = SQLDriver(self.conf)
-        self.dbapi_connection = mock.Mock()
+        self.execute = mock.Mock()
+        self.mock_conn = mock.Mock(OperationalError=exc.OperationalError)
 
-        cursor = mock.Mock()
-        cursor.execute = mock.Mock()
-        self.dbapi_connection.cursor.return_value = cursor
-        self.dbapi_connection.OperationalError = exc.OperationalError
+        self.mock_conn.cursor.return_value = mock.Mock(execute=self.execute)
         engine = create_engine(self.url)
         meta_test.bind = engine
         Session.configure(bind=engine)
@@ -129,32 +127,32 @@ class TestSQLDriver(unittest.TestCase):
         self.assertEqual(None, self.key_driver.validate_key_id("42"))
 
     def test_succesful_ping(self):
-        self.dbapi_connection.cursor().execute.return_value = None
+        self.execute.return_value = None
         self.assertEqual(None,
-                        ping_connection(self.dbapi_connection, None, None))
+                        ping_connection(self.mock_conn, None, None))
 
     def test_connection_problems(self):
         error = exc.OperationalError(None, None, None)
-        #typical situations when connection should be removed from a pool
+        #typical situation when connection should be removed from a pool
         for code in (2006, 2013, 2014, 2045, 2055):
             error.args = [code, 'connection need to be removed']
-            self.dbapi_connection.cursor().execute.side_effect = error
+            self.execute.side_effect = error
             self.assertRaises(exc.DisconnectionError, ping_connection,
-                            self.dbapi_connection, None, None)
+                            self.mock_conn, None, None)
 
     def test_unknown_problem(self):
         error = exc.OperationalError(None, None, None)
         #expected exception type with unexpected error code, raised further
         error.args = [2000, "CR_UNKNOWN_ERROR"]
-        self.dbapi_connection.cursor().execute.side_effect = error
+        self.execute.side_effect = error
         self.assertRaises(exc.OperationalError, ping_connection,
-                            self.dbapi_connection, None, None)
+                            self.mock_conn, None, None)
         error = StandardError()
         #unexpected error, shouldn't be catched
         error.args = [42, 'all is lost']
-        self.dbapi_connection.cursor().execute.side_effect = error
+        self.execute.side_effect = error
         self.assertRaises(StandardError, ping_connection,
-                            self.dbapi_connection, None, None)
+                            self.mock_conn, None, None)
 
 
 if __name__ == '__main__':
